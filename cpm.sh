@@ -218,30 +218,42 @@ _cpm_pick() {
     return 1
   fi
 
+  # total = BYOK models + 1 for built-in
+  local total=$((count + 1))
+
   echo "Pick a model:"
   echo ""
+  echo "  1) Copilot (built-in)"
   local _label i=0
   while [ "$i" -lt "$count" ]; do
     _label=$(printf '%s' "$all_json" | jq -r ".[$i].label")
-    echo "  $((i + 1))) $_label"
+    echo "  $((i + 2))) $_label"
     i=$((i + 1))
   done
   echo ""
 
   local choice
   while true; do
-    printf "Enter number (1-%d): " "$count"
+    printf "Enter number (1-%d): " "$total"
     read -r choice
     case "$choice" in
       ''|*[!0-9]*) echo "Invalid choice." >&2; continue ;;
     esac
-    if [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ]; then
+    if [ "$choice" -ge 1 ] && [ "$choice" -le "$total" ]; then
       break
     fi
     echo "Invalid choice." >&2
   done
 
-  local idx=$((choice - 1))
+  # Option 1 = built-in (clear all BYOK vars)
+  if [ "$choice" -eq 1 ]; then
+    _cpm_clear
+    echo ""
+    echo "✓ Switched to Copilot (built-in)"
+    return 0
+  fi
+
+  local idx=$((choice - 2))
   local selected
   selected=$(printf '%s' "$all_json" | jq -c ".[$idx]")
 

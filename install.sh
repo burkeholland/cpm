@@ -6,8 +6,9 @@ set -euo pipefail
 CPM_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/cpm"
 CPM_CONFIG_FILE="$CPM_CONFIG_DIR/models.json"
 CPM_SHELL_FILE="$CPM_CONFIG_DIR/cpm.sh"
+CPM_REPO_URL="https://raw.githubusercontent.com/burkeholland/cpm/main"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" 2>/dev/null && pwd 2>/dev/null || echo "")"
 
 echo "Installing cpm..."
 echo ""
@@ -15,8 +16,12 @@ echo ""
 # ── create config dir ────────────────────────────────────────────────
 mkdir -p "$CPM_CONFIG_DIR"
 
-# ── copy shell function ──────────────────────────────────────────────
-cp "$SCRIPT_DIR/cpm.sh" "$CPM_SHELL_FILE"
+# ── install shell function ───────────────────────────────────────────
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/cpm.sh" ]; then
+  cp "$SCRIPT_DIR/cpm.sh" "$CPM_SHELL_FILE"
+else
+  curl -fsSL "$CPM_REPO_URL/cpm.sh" -o "$CPM_SHELL_FILE"
+fi
 echo "✓ Installed shell function to $CPM_SHELL_FILE"
 
 # ── create default config if missing ─────────────────────────────────

@@ -4,517 +4,477 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>cpm — Copilot Provider Model Switcher</title>
-    <meta name="description" content="Switch between BYOK models for GitHub Copilot CLI with one command. Interactive picker, key management, VS Code import.">
+    <meta name="description" content="Switch between BYOK models for GitHub Copilot CLI with one command.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --coral: #ff7f50;
+            --coral-soft: #fff0eb;
             --azure: #0ea5e9;
+            --azure-soft: #e8f7fe;
             --sage: #84cc16;
-            --bg-base: #fcfdfe;
-            --bg-gradient: linear-gradient(165deg, #ffffff 0%, #f0f9ff 35%, #f6fff8 70%, #fff8f5 100%);
-            --text-primary: #111827;
-            --text-secondary: #4b5563;
-            --text-tertiary: #9ca3af;
-            --accent-gradient: linear-gradient(135deg, var(--coral), var(--azure), var(--sage));
-            --card-bg: rgba(255, 255, 255, 0.65);
-            --card-border: rgba(255, 255, 255, 0.6);
-            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
-            --font-display: 'Outfit', -apple-system, sans-serif;
-            --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-            --radius: 20px;
-            --radius-sm: 12px;
+            --sage-soft: #f2fde0;
+            --bg: linear-gradient(168deg, #ffffff 0%, #f0f9ff 30%, #f8fef0 55%, #fff6f2 100%);
+            --surface: rgba(255, 255, 255, 0.72);
+            --surface-border: rgba(0, 0, 0, 0.05);
+            --text-1: #0f172a;
+            --text-2: #475569;
+            --text-3: #94a3b8;
+            --accent-grad: linear-gradient(135deg, var(--coral), #e96833 30%, var(--azure) 65%, var(--sage));
+            --term-bg: #0c0e14;
+            --term-surface: #12151e;
+            --font: 'DM Sans', -apple-system, sans-serif;
+            --mono: 'IBM Plex Mono', 'SF Mono', monospace;
+            --r: 18px;
+            --r-sm: 12px;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        html { scroll-behavior: smooth; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
 
         body {
-            background: var(--bg-gradient);
-            color: var(--text-primary);
-            font-family: var(--font-display);
+            background: var(--bg);
+            color: var(--text-1);
+            font-family: var(--font);
             line-height: 1.6;
             min-height: 100vh;
             overflow-x: hidden;
-            position: relative;
         }
 
-        /* ── ambient background orbs ─────────────────────────────── */
-        body::before,
+        /* ── grain overlay ─────────────────────────────────────── */
         body::after {
             content: '';
             position: fixed;
-            border-radius: 50%;
-            filter: blur(120px);
-            opacity: 0.12;
-            z-index: -1;
+            inset: 0;
+            z-index: 9999;
             pointer-events: none;
+            opacity: 0.018;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
         }
-        body::before {
-            width: 600px; height: 600px;
+
+        /* ── ambient glow ──────────────────────────────────────── */
+        .glow {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(100px);
+            pointer-events: none;
+            z-index: -1;
+        }
+        .glow-coral {
+            width: 480px; height: 480px;
             background: var(--coral);
-            top: -200px; right: -100px;
-            animation: drift 25s ease-in-out infinite alternate;
+            opacity: 0.07;
+            top: -120px; right: -80px;
+            animation: float-a 28s ease-in-out infinite alternate;
         }
-        body::after {
-            width: 500px; height: 500px;
+        .glow-azure {
+            width: 400px; height: 400px;
             background: var(--azure);
-            bottom: -150px; left: -100px;
-            animation: drift 20s ease-in-out infinite alternate-reverse;
+            opacity: 0.06;
+            bottom: 10%; left: -60px;
+            animation: float-b 22s ease-in-out infinite alternate;
         }
-        @keyframes drift {
-            0%   { transform: translate(0, 0) scale(1); }
-            100% { transform: translate(60px, 40px) scale(1.1); }
+        .glow-sage {
+            width: 350px; height: 350px;
+            background: var(--sage);
+            opacity: 0.05;
+            top: 55%; right: -40px;
+            animation: float-a 30s ease-in-out infinite alternate-reverse;
+        }
+        @keyframes float-a {
+            to { transform: translate(50px, 35px) scale(1.08); }
+        }
+        @keyframes float-b {
+            to { transform: translate(40px, -30px) scale(1.05); }
         }
 
-        .container { max-width: 960px; margin: 0 auto; padding: 0 1.5rem; }
+        .wrap { max-width: 880px; margin: 0 auto; padding: 0 1.5rem; }
 
-        /* ── header ──────────────────────────────────────────────── */
-        .site-header {
-            padding: 1.25rem 0;
+        /* ── header ────────────────────────────────────────────── */
+        header {
             position: sticky;
             top: 0;
-            z-index: 50;
-            backdrop-filter: blur(16px) saturate(1.4);
-            -webkit-backdrop-filter: blur(16px) saturate(1.4);
-            background: rgba(255, 255, 255, 0.55);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+            z-index: 100;
+            padding: 1rem 0;
+            backdrop-filter: blur(20px) saturate(1.6);
+            -webkit-backdrop-filter: blur(20px) saturate(1.6);
+            background: rgba(255,255,255,0.6);
+            border-bottom: 1px solid rgba(0,0,0,0.04);
         }
-        .header-inner {
+        .hdr {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         .logo {
-            font-weight: 800;
-            font-size: 1.35rem;
-            color: var(--text-primary);
+            font-family: var(--mono);
+            font-weight: 600;
+            font-size: 1.2rem;
+            color: var(--text-1);
             text-decoration: none;
             letter-spacing: -0.02em;
-            font-family: var(--font-mono);
         }
-        .logo span {
-            background: var(--accent-gradient);
+        .logo b {
+            background: var(--accent-grad);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        .header-links { display: flex; gap: 1.5rem; align-items: center; }
-        .header-links a {
-            color: var(--text-secondary);
-            text-decoration: none;
+        .hdr-links { display: flex; gap: 1.25rem; align-items: center; }
+        .hdr-links a {
+            font-size: 0.85rem;
             font-weight: 500;
-            font-size: 0.9rem;
-            transition: color 0.2s;
+            color: var(--text-2);
+            text-decoration: none;
+            transition: color 0.15s;
         }
-        .header-links a:hover { color: var(--text-primary); }
-        .gh-btn {
+        .hdr-links a:hover { color: var(--text-1); }
+        .hdr-gh {
             display: inline-flex;
             align-items: center;
             gap: 0.4rem;
-            padding: 0.4rem 0.9rem;
-            border-radius: 9999px;
-            border: 1px solid rgba(0,0,0,0.08);
-            background: rgba(255,255,255,0.6);
-            font-size: 0.85rem;
+            padding: 0.35rem 0.85rem;
+            border-radius: 999px;
+            background: var(--text-1);
+            color: #fff !important;
             font-weight: 600;
-            color: var(--text-primary) !important;
-            transition: all 0.2s;
+            font-size: 0.82rem;
+            transition: transform 0.15s, box-shadow 0.15s;
         }
-        .gh-btn:hover {
-            background: rgba(255,255,255,0.9);
-            border-color: rgba(0,0,0,0.12);
+        .hdr-gh:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
         }
-        .gh-btn svg { width: 16px; height: 16px; }
+        .hdr-gh svg { width: 15px; height: 15px; fill: #fff; }
 
-        /* ── hero ────────────────────────────────────────────────── */
+        /* ── hero ──────────────────────────────────────────────── */
         .hero {
-            padding: 5rem 0 3rem;
+            padding: 5.5rem 0 2rem;
             text-align: center;
         }
-        .hero-badge {
+        .pill {
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.35rem 1rem;
-            border-radius: 9999px;
-            background: rgba(14, 165, 233, 0.08);
-            border: 1px solid rgba(14, 165, 233, 0.15);
-            font-size: 0.8rem;
+            gap: 0.45rem;
+            padding: 0.3rem 0.9rem 0.3rem 0.65rem;
+            border-radius: 999px;
+            background: var(--azure-soft);
+            font-size: 0.78rem;
             font-weight: 600;
-            color: var(--azure);
+            color: #0284c7;
             margin-bottom: 2rem;
-            letter-spacing: 0.02em;
-            animation: fadeUp 0.6s ease-out both;
+            animation: up 0.5s ease-out both;
         }
-        .hero-badge::before {
-            content: '';
-            width: 6px; height: 6px;
+        .pill-dot {
+            width: 7px; height: 7px;
             border-radius: 50%;
             background: var(--azure);
-            animation: pulse-dot 2s ease-in-out infinite;
+            animation: pulse 2.5s ease-in-out infinite;
         }
-        @keyframes pulse-dot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
         }
         .hero h1 {
-            font-size: clamp(2.8rem, 6vw, 4.2rem);
-            font-weight: 900;
-            line-height: 1.05;
-            letter-spacing: -0.035em;
-            margin-bottom: 1.25rem;
-            animation: fadeUp 0.6s 0.1s ease-out both;
+            font-size: clamp(2.6rem, 5.5vw, 4rem);
+            font-weight: 800;
+            line-height: 1.08;
+            letter-spacing: -0.04em;
+            margin-bottom: 1.2rem;
+            animation: up 0.5s 0.08s ease-out both;
         }
-        .hero h1 .accent {
-            background: var(--accent-gradient);
+        .hero h1 em {
+            font-style: normal;
+            background: var(--accent-grad);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        .hero .subtitle {
-            font-size: 1.15rem;
-            color: var(--text-secondary);
-            max-width: 520px;
-            margin: 0 auto 2.5rem;
+        .hero > p {
+            font-size: 1.12rem;
+            color: var(--text-2);
+            max-width: 480px;
+            margin: 0 auto 3rem;
             font-weight: 400;
-            animation: fadeUp 0.6s 0.2s ease-out both;
+            line-height: 1.55;
+            animation: up 0.5s 0.16s ease-out both;
         }
-
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(16px); }
+        @keyframes up {
+            from { opacity: 0; transform: translateY(18px); }
             to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* ── install block ───────────────────────────────────────── */
-        .install-block {
-            animation: fadeUp 0.6s 0.3s ease-out both;
-            margin-bottom: 1.5rem;
-        }
-        .install-card {
-            background: var(--text-primary);
-            border-radius: var(--radius);
-            padding: 0;
+        /* ── terminal blocks ───────────────────────────────────── */
+        .term {
+            background: var(--term-bg);
+            border-radius: var(--r);
             overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 4px 16px rgba(0,0,0,0.1);
-            max-width: 640px;
+            box-shadow:
+                0 2px 4px rgba(0,0,0,0.08),
+                0 12px 40px rgba(0,0,0,0.18),
+                0 0 0 1px rgba(255,255,255,0.04) inset;
+            max-width: 620px;
             margin: 0 auto;
         }
-        .install-card-header {
+        .term-bar {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 0.8rem 1rem;
-            background: rgba(255,255,255,0.06);
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            gap: 7px;
+            padding: 13px 16px;
+            background: var(--term-surface);
+            border-bottom: 1px solid rgba(255,255,255,0.04);
         }
-        .dot { width: 10px; height: 10px; border-radius: 50%; }
-        .dot-r { background: #ff5f57; }
-        .dot-y { background: #ffbd2e; }
-        .dot-g { background: #28c840; }
-        .install-card-header span {
-            margin-left: auto;
-            margin-right: auto;
-            padding-right: 30px;
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            color: rgba(255,255,255,0.35);
-            font-weight: 500;
-        }
-        .install-body {
-            padding: 1.5rem 1.5rem;
-        }
-        .install-line {
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            line-height: 1.8;
-            color: rgba(255,255,255,0.5);
-            display: flex;
-            align-items: flex-start;
-            gap: 0;
-            white-space: nowrap;
-            overflow-x: auto;
-        }
-        .install-line .prompt {
-            color: var(--sage);
-            user-select: none;
-            flex-shrink: 0;
-        }
-        .install-line .cmd {
-            color: rgba(255,255,255,0.92);
-        }
-        .install-line .flag { color: var(--azure); }
-        .install-line .str { color: var(--coral); }
-        .install-line .comment {
-            color: rgba(255,255,255,0.25);
-            font-style: italic;
-        }
-
-        .install-tabs {
-            display: flex;
-            gap: 0;
-            max-width: 640px;
-            margin: 0 auto;
-            padding: 0 1px;
-        }
-        .install-tab {
+        .td { width: 11px; height: 11px; border-radius: 50%; }
+        .td-r { background: #ff5f57; }
+        .td-y { background: #febc2e; }
+        .td-g { background: #28c840; }
+        .term-bar .term-title {
             flex: 1;
-            padding: 0.55rem 1rem;
             text-align: center;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--text-tertiary);
-            cursor: pointer;
-            border: none;
-            background: transparent;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-            font-family: var(--font-display);
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.28);
+            padding-right: 40px;
         }
-        .install-tab.active {
-            color: var(--text-primary);
-            border-bottom-color: var(--azure);
+        .term pre {
+            margin: 0;
+            padding: 20px 22px;
+            font-family: var(--mono);
+            font-size: 0.84rem;
+            line-height: 1.75;
+            color: rgba(255,255,255,0.6);
+            overflow-x: auto;
+            tab-size: 4;
+            white-space: pre;
         }
-        .install-tab:hover:not(.active) { color: var(--text-secondary); }
-        .install-content { display: none; }
-        .install-content.active { display: block; }
-
-        .copy-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            margin-top: 1rem;
-            padding: 0.35rem 0.8rem;
-            border-radius: 8px;
-            border: 1px solid rgba(255,255,255,0.1);
-            background: rgba(255,255,255,0.06);
-            color: rgba(255,255,255,0.5);
-            font-family: var(--font-mono);
-            font-size: 0.7rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .copy-btn:hover {
-            background: rgba(255,255,255,0.1);
-            color: rgba(255,255,255,0.8);
-        }
-        .copy-btn.copied { color: var(--sage); border-color: rgba(132,204,22,0.3); }
-        .copy-btn svg { width: 13px; height: 13px; }
-
-        /* ── demo section ────────────────────────────────────────── */
-        .demo-section {
-            padding: 2rem 0 4rem;
-            animation: fadeUp 0.6s 0.4s ease-out both;
-        }
-        .demo-card {
-            background: var(--text-primary);
-            border-radius: var(--radius);
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-            max-width: 640px;
-            margin: 0 auto;
-        }
-        .demo-header {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 0.8rem 1rem;
-            background: rgba(255,255,255,0.06);
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
-        .demo-header span {
-            margin-left: auto;
-            margin-right: auto;
-            padding-right: 30px;
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            color: rgba(255,255,255,0.35);
-        }
-        .demo-body {
-            padding: 1.5rem;
-            font-family: var(--font-mono);
-            font-size: 0.82rem;
-            line-height: 1.7;
-            color: rgba(255,255,255,0.85);
-        }
-        .demo-body .dim { color: rgba(255,255,255,0.3); }
-        .demo-body .green { color: var(--sage); }
-        .demo-body .blue { color: var(--azure); }
-        .demo-body .coral { color: var(--coral); }
-        .demo-body .white { color: rgba(255,255,255,0.92); }
-        .demo-body .prompt-line { color: var(--sage); }
-        .demo-body .output { color: rgba(255,255,255,0.55); }
-        .demo-body .check { color: var(--sage); }
-
-        .typing-cursor {
+        .term pre .p  { color: var(--sage); }           /* prompt */
+        .term pre .c  { color: rgba(255,255,255,0.88); } /* command text */
+        .term pre .s  { color: var(--coral); }           /* string / url */
+        .term pre .f  { color: var(--azure); }           /* flag */
+        .term pre .d  { color: rgba(255,255,255,0.25); } /* dim */
+        .term pre .w  { color: rgba(255,255,255,0.85); } /* white */
+        .term pre .ok { color: var(--sage); }             /* checkmark */
+        .term pre .o  { color: rgba(255,255,255,0.50); } /* output */
+        .term pre .cursor {
             display: inline-block;
             width: 8px;
-            height: 1.1em;
+            height: 1.15em;
             background: var(--sage);
             vertical-align: text-bottom;
             animation: blink 1s step-end infinite;
-            margin-left: 2px;
+            margin-left: 1px;
         }
-        @keyframes blink {
-            50% { opacity: 0; }
-        }
+        @keyframes blink { 50% { opacity: 0; } }
 
-        /* ── features ────────────────────────────────────────────── */
-        .features {
-            padding: 3rem 0 4rem;
+        /* ── install section ───────────────────────────────────── */
+        .install-section {
+            animation: up 0.5s 0.24s ease-out both;
         }
-        .features-label {
+        .tabs {
+            display: flex;
+            max-width: 620px;
+            margin: 0 auto 0;
+        }
+        .tab {
+            flex: 1;
+            padding: 0.6rem;
             text-align: center;
             font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-3);
+            cursor: pointer;
+            border: none;
+            background: none;
+            border-bottom: 2px solid transparent;
+            font-family: var(--font);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .tab.on {
+            color: var(--text-1);
+            border-bottom-color: var(--azure);
+        }
+        .tab:hover:not(.on) { color: var(--text-2); }
+        .tab-body { display: none; }
+        .tab-body.on { display: block; }
+
+        .copy-row {
+            display: flex;
+            justify-content: flex-end;
+            padding: 0 22px 14px;
+        }
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 7px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.04);
+            color: rgba(255,255,255,0.4);
+            font-family: var(--mono);
+            font-size: 0.68rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .copy-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.7);
+        }
+        .copy-btn.ok { color: var(--sage); border-color: rgba(132,204,22,0.25); }
+        .copy-btn svg { width: 12px; height: 12px; }
+
+        /* ── demo section ──────────────────────────────────────── */
+        .demo {
+            padding: 3.5rem 0 1rem;
+            animation: up 0.5s 0.32s ease-out both;
+        }
+        .demo-label {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-2);
+            margin-bottom: 1.25rem;
+            font-weight: 500;
+        }
+
+        /* ── features ──────────────────────────────────────────── */
+        .features {
+            padding: 5rem 0 4rem;
+        }
+        .section-tag {
+            text-align: center;
+            font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            background: var(--accent-gradient);
+            letter-spacing: 0.12em;
+            background: var(--accent-grad);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.65rem;
         }
-        .features h2 {
+        .section-h {
             text-align: center;
-            font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+            font-size: clamp(1.7rem, 3vw, 2.2rem);
             font-weight: 800;
             letter-spacing: -0.03em;
             margin-bottom: 3rem;
         }
-        .features-grid {
+        .feat-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 1.25rem;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
         }
-        .feature-card {
-            background: var(--card-bg);
+        .feat {
+            padding: 1.6rem;
+            border-radius: var(--r);
+            background: var(--surface);
             backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius);
-            padding: 1.75rem;
-            box-shadow: var(--glass-shadow);
-            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            border: 1px solid var(--surface-border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
-        .feature-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 16px 48px rgba(0,0,0,0.08);
+        .feat:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.06);
         }
-        .feature-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1rem;
-            font-size: 1.3rem;
+        .feat-ico {
+            width: 40px; height: 40px;
+            border-radius: 10px;
+            display: grid;
+            place-items: center;
+            margin-bottom: 0.9rem;
+            font-size: 1.15rem;
         }
-        .fi-coral  { background: rgba(255,127,80,0.1); color: var(--coral); }
-        .fi-azure  { background: rgba(14,165,233,0.1); color: var(--azure); }
-        .fi-sage   { background: rgba(132,204,22,0.1); color: var(--sage); }
-        .feature-card h3 {
-            font-size: 1.05rem;
+        .ico-coral { background: var(--coral-soft); }
+        .ico-azure { background: var(--azure-soft); }
+        .ico-sage  { background: var(--sage-soft); }
+        .feat h3 {
+            font-size: 0.95rem;
             font-weight: 700;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.4rem;
             letter-spacing: -0.01em;
         }
-        .feature-card p {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            line-height: 1.55;
+        .feat p {
+            font-size: 0.85rem;
+            color: var(--text-2);
+            line-height: 1.5;
+        }
+        .feat code {
+            font-family: var(--mono);
+            font-size: 0.78em;
+            padding: 0.1em 0.4em;
+            border-radius: 5px;
+            background: rgba(0,0,0,0.04);
         }
 
-        /* ── commands table ──────────────────────────────────────── */
+        /* ── commands ──────────────────────────────────────────── */
         .commands {
-            padding: 2rem 0 4rem;
+            padding: 2rem 0 5rem;
         }
-        .commands-label {
-            text-align: center;
-            font-size: 0.8rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            background: var(--accent-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.75rem;
-        }
-        .commands h2 {
-            text-align: center;
-            font-size: clamp(1.8rem, 3.5vw, 2.4rem);
-            font-weight: 800;
-            letter-spacing: -0.03em;
-            margin-bottom: 3rem;
-        }
-        .cmd-grid {
+        .cmd-list {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 0.75rem;
-            max-width: 720px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.6rem;
+            max-width: 660px;
             margin: 0 auto;
         }
-        .cmd-item {
+        .cmd-row {
             display: flex;
             align-items: baseline;
             gap: 1rem;
-            padding: 0.9rem 1.2rem;
-            border-radius: var(--radius-sm);
-            background: var(--card-bg);
-            backdrop-filter: blur(8px);
-            border: 1px solid var(--card-border);
-            transition: transform 0.2s;
+            padding: 0.75rem 1.1rem;
+            border-radius: var(--r-sm);
+            background: var(--surface);
+            border: 1px solid var(--surface-border);
+            transition: transform 0.15s;
         }
-        .cmd-item:hover { transform: translateX(4px); }
-        .cmd-name {
-            font-family: var(--font-mono);
-            font-size: 0.82rem;
+        .cmd-row:hover { transform: translateX(3px); }
+        .cmd-k {
+            font-family: var(--mono);
+            font-size: 0.8rem;
             font-weight: 600;
             color: var(--azure);
             white-space: nowrap;
             flex-shrink: 0;
         }
-        .cmd-desc {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
+        .cmd-v {
+            font-size: 0.84rem;
+            color: var(--text-2);
         }
 
-        /* ── footer ──────────────────────────────────────────────── */
+        /* ── footer ────────────────────────────────────────────── */
         footer {
             text-align: center;
-            padding: 3rem 0;
-            color: var(--text-tertiary);
-            font-size: 0.82rem;
+            padding: 2.5rem 0;
+            font-size: 0.8rem;
+            color: var(--text-3);
         }
-        footer a {
-            color: var(--text-secondary);
-            text-decoration: none;
-        }
-        footer a:hover { color: var(--text-primary); }
+        footer a { color: var(--text-2); text-decoration: none; }
+        footer a:hover { color: var(--text-1); }
 
-        /* ── responsive ──────────────────────────────────────────── */
-        @media (max-width: 640px) {
-            .hero { padding: 3rem 0 2rem; }
-            .install-line { font-size: 0.75rem; }
-            .header-links .nav-link { display: none; }
-            .features-grid { grid-template-columns: 1fr; }
-            .cmd-grid { grid-template-columns: 1fr; }
+        /* ── responsive ────────────────────────────────────────── */
+        @media (max-width: 720px) {
+            .feat-grid { grid-template-columns: 1fr; }
+            .cmd-list  { grid-template-columns: 1fr; }
+            .hdr-links .hide-sm { display: none; }
+            .hero { padding: 4rem 0 2rem; }
+            .term pre { font-size: 0.76rem; padding: 16px; }
         }
     </style>
 </head>
 <body>
 
-<header class="site-header">
-    <div class="container header-inner">
-        <a href="#" class="logo">cpm<span>.</span></a>
-        <div class="header-links">
-            <a href="#features" class="nav-link">Features</a>
-            <a href="#commands" class="nav-link">Commands</a>
-            <a href="https://github.com/burkeholland/cpm" class="gh-btn">
-                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+<div class="glow glow-coral"></div>
+<div class="glow glow-azure"></div>
+<div class="glow glow-sage"></div>
+
+<header>
+    <div class="wrap hdr">
+        <a href="#" class="logo">cpm<b>.</b></a>
+        <div class="hdr-links">
+            <a href="#features" class="hide-sm">Features</a>
+            <a href="#commands" class="hide-sm">Commands</a>
+            <a href="https://github.com/burkeholland/cpm" class="hdr-gh">
+                <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
                 GitHub
             </a>
         </div>
@@ -522,197 +482,167 @@
 </header>
 
 <main>
-    <section class="hero container">
-        <div class="hero-badge">GitHub Copilot CLI</div>
-        <h1>Switch models<br>in <span class="accent">one command</span></h1>
-        <p class="subtitle">cpm is a tiny shell tool that makes it easy to switch between BYOK provider models in GitHub Copilot CLI.</p>
 
-        <div class="install-block">
-            <div class="install-tabs">
-                <button class="install-tab active" data-tab="bash">Bash / Zsh</button>
-                <button class="install-tab" data-tab="powershell">PowerShell</button>
-            </div>
-            <div class="install-card">
-                <div class="install-card-header">
-                    <div class="dot dot-r"></div>
-                    <div class="dot dot-y"></div>
-                    <div class="dot dot-g"></div>
-                    <span>Terminal</span>
+<!-- ── HERO ──────────────────────────────────────────────────── -->
+<section class="hero wrap">
+    <div class="pill"><span class="pill-dot"></span> For GitHub Copilot CLI</div>
+    <h1>Switch models<br>in <em>one command</em></h1>
+    <p>A tiny shell tool for switching between BYOK provider models. Pick a model, get your env vars, start Copilot.</p>
+
+    <div class="install-section">
+        <div class="tabs">
+            <button class="tab on" data-t="bash">Bash / Zsh</button>
+            <button class="tab" data-t="ps">PowerShell</button>
+        </div>
+
+        <div class="tab-body on" id="t-bash">
+            <div class="term">
+                <div class="term-bar">
+                    <div class="td td-r"></div>
+                    <div class="td td-y"></div>
+                    <div class="td td-g"></div>
+                    <span class="term-title">Terminal</span>
                 </div>
-                <div class="install-body">
-                    <div class="install-content active" id="tab-bash">
-                        <div class="install-line">
-                            <span class="prompt">$&nbsp;</span>
-                            <span class="cmd">git clone </span>
-                            <span class="str">https://github.com/burkeholland/cpm</span>
-                        </div>
-                        <div class="install-line">
-                            <span class="prompt">$&nbsp;</span>
-                            <span class="cmd">cd </span>
-                            <span class="str">cpm</span>
-                            <span class="cmd"> && bash </span>
-                            <span class="str">install.sh</span>
-                        </div>
-                        <button class="copy-btn" data-copy="git clone https://github.com/burkeholland/cpm && cd cpm && bash install.sh">
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
-                            Copy
-                        </button>
-                    </div>
-                    <div class="install-content" id="tab-powershell">
-                        <div class="install-line">
-                            <span class="prompt">>&nbsp;</span>
-                            <span class="cmd">git clone </span>
-                            <span class="str">https://github.com/burkeholland/cpm</span>
-                        </div>
-                        <div class="install-line">
-                            <span class="prompt">>&nbsp;</span>
-                            <span class="cmd">cd </span>
-                            <span class="str">cpm</span>
-                            <span class="cmd">; .\</span>
-                            <span class="str">install.ps1</span>
-                        </div>
-                        <button class="copy-btn" data-copy="git clone https://github.com/burkeholland/cpm; cd cpm; .\install.ps1">
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
-                            Copy
-                        </button>
-                    </div>
+<pre>
+<span class="p">$</span> <span class="c">curl</span> <span class="f">-fsSL</span> <span class="s">https://raw.githubusercontent.com/burkeholland/cpm/main/install.sh</span> <span class="c">|</span> <span class="c">bash</span>
+</pre>
+                <div class="copy-row">
+                    <button class="copy-btn" data-copy="curl -fsSL https://raw.githubusercontent.com/burkeholland/cpm/main/install.sh | bash">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
+                        Copy
+                    </button>
                 </div>
             </div>
         </div>
-    </section>
 
-    <!-- ── demo ──────────────────────────────────────────────── -->
-    <section class="demo-section container">
-        <div class="demo-card">
-            <div class="demo-header">
-                <div class="dot dot-r"></div>
-                <div class="dot dot-y"></div>
-                <div class="dot dot-g"></div>
-                <span>~ / project</span>
-            </div>
-            <div class="demo-body" id="demo-output">
-                <div class="prompt-line">$ cpm</div>
-                <div class="output" style="margin-top:0.3em">Pick a model:</div>
-                <div class="output" style="margin-top:0.5em">
-                    &nbsp;&nbsp;<span class="dim">1)</span> <span class="white">MiniMax</span> <span class="dim">&gt;</span> <span class="blue">MiniMax-M2.7</span><br>
-                    &nbsp;&nbsp;<span class="dim">2)</span> <span class="white">Ollama</span> <span class="dim">&gt;</span> <span class="blue">llama3.2</span><br>
-                    &nbsp;&nbsp;<span class="dim">3)</span> <span class="white">Anthropic</span> <span class="dim">&gt;</span> <span class="blue">claude-opus-4-5</span>
+        <div class="tab-body" id="t-ps">
+            <div class="term">
+                <div class="term-bar">
+                    <div class="td td-r"></div>
+                    <div class="td td-y"></div>
+                    <div class="td td-g"></div>
+                    <span class="term-title">PowerShell</span>
                 </div>
-                <div style="margin-top:0.5em">
-                    <span class="output">Enter number (1-3): </span><span class="coral">1</span>
+<pre>
+<span class="p">&gt;</span> <span class="c">irm</span> <span class="s">https://raw.githubusercontent.com/burkeholland/cpm/main/install.ps1</span> <span class="c">|</span> <span class="c">iex</span>
+</pre>
+                <div class="copy-row">
+                    <button class="copy-btn" data-copy="irm https://raw.githubusercontent.com/burkeholland/cpm/main/install.ps1 | iex">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
+                        Copy
+                    </button>
                 </div>
-                <div style="margin-top:0.6em">
-                    <span class="check">✓</span> <span class="white">Switched to MiniMax &gt; MiniMax-M2.7</span>
-                </div>
-                <div style="margin-top:1em" class="prompt-line">$ copilot<span class="typing-cursor"></span></div>
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
-    <!-- ── features ──────────────────────────────────────────── -->
-    <section class="features container" id="features">
-        <div class="features-label">Features</div>
-        <h2>Everything you need</h2>
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon fi-coral">⚡</div>
-                <h3>Interactive Picker</h3>
-                <p>Numbered menu shows Provider &gt; Model. Pick a number, get your env vars set instantly.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon fi-azure">🔑</div>
-                <h3>Key Management</h3>
-                <p>Prompts for missing API keys inline and saves them to your shell profile automatically.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon fi-sage">📦</div>
-                <h3>VS Code Import</h3>
-                <p>Already configured BYOK models in VS Code? Import them with <code style="font-family:var(--font-mono);font-size:0.82em;background:rgba(0,0,0,0.04);padding:0.1em 0.4em;border-radius:4px;">cpm import</code>.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon fi-coral">🐚</div>
-                <h3>Cross-Shell</h3>
-                <p>Works in Bash, Zsh, and PowerShell. Shell function design means env vars stick in your session.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon fi-azure">🔒</div>
-                <h3>No Secrets in Config</h3>
-                <p>Config stores env var <em>names</em>, not keys. Your secrets stay in your shell profile where they belong.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon fi-sage">📝</div>
-                <h3>Simple JSON Config</h3>
-                <p>One JSON file at <code style="font-family:var(--font-mono);font-size:0.82em;background:rgba(0,0,0,0.04);padding:0.1em 0.4em;border-radius:4px;">~/.config/cpm/models.json</code>. Edit it with <code style="font-family:var(--font-mono);font-size:0.82em;background:rgba(0,0,0,0.04);padding:0.1em 0.4em;border-radius:4px;">cpm edit</code>.</p>
-            </div>
+<!-- ── DEMO ──────────────────────────────────────────────────── -->
+<section class="demo wrap">
+    <p class="demo-label">Then just run <strong>cpm</strong></p>
+    <div class="term">
+        <div class="term-bar">
+            <div class="td td-r"></div>
+            <div class="td td-y"></div>
+            <div class="td td-g"></div>
+            <span class="term-title">~/project</span>
         </div>
-    </section>
+<pre>
+<span class="p">$</span> <span class="c">cpm</span>
 
-    <!-- ── commands ───────────────────────────────────────────── -->
-    <section class="commands container" id="commands">
-        <div class="commands-label">Reference</div>
-        <h2>All commands</h2>
-        <div class="cmd-grid">
-            <div class="cmd-item">
-                <span class="cmd-name">cpm</span>
-                <span class="cmd-desc">Interactive model picker</span>
-            </div>
-            <div class="cmd-item">
-                <span class="cmd-name">cpm status</span>
-                <span class="cmd-desc">Show active model &amp; env vars</span>
-            </div>
-            <div class="cmd-item">
-                <span class="cmd-name">cpm list</span>
-                <span class="cmd-desc">List all configured models</span>
-            </div>
-            <div class="cmd-item">
-                <span class="cmd-name">cpm keys</span>
-                <span class="cmd-desc">Show &amp; set API keys</span>
-            </div>
-            <div class="cmd-item">
-                <span class="cmd-name">cpm edit</span>
-                <span class="cmd-desc">Open config in $EDITOR</span>
-            </div>
-            <div class="cmd-item">
-                <span class="cmd-name">cpm import</span>
-                <span class="cmd-desc">Import from VS Code</span>
-            </div>
-            <div class="cmd-item">
-                <span class="cmd-name">cpm clear</span>
-                <span class="cmd-desc">Unset all provider env vars</span>
-            </div>
-            <div class="cmd-item">
-                <span class="cmd-name">cpm help</span>
-                <span class="cmd-desc">Show help</span>
-            </div>
+<span class="o">Pick a model:</span>
+
+  <span class="d">1)</span> <span class="w">Copilot (built-in)</span>
+  <span class="d">2)</span> <span class="w">MiniMax</span>   <span class="d">&gt;</span> <span class="f">MiniMax-M2.7</span>
+  <span class="d">3)</span> <span class="w">Ollama</span>    <span class="d">&gt;</span> <span class="f">llama3.2</span>
+  <span class="d">4)</span> <span class="w">Anthropic</span> <span class="d">&gt;</span> <span class="f">claude-opus-4-5</span>
+
+<span class="o">Enter number (1-4):</span> <span class="s">2</span>
+
+<span class="ok">✓</span> <span class="w">Switched to MiniMax &gt; MiniMax-M2.7</span>
+
+<span class="p">$</span> <span class="c">copilot</span><span class="cursor"></span>
+</pre>
+    </div>
+</section>
+
+<!-- ── FEATURES ──────────────────────────────────────────────── -->
+<section class="features wrap" id="features">
+    <div class="section-tag">Features</div>
+    <h2 class="section-h">Everything you need</h2>
+    <div class="feat-grid">
+        <div class="feat">
+            <div class="feat-ico ico-coral">⚡</div>
+            <h3>Interactive Picker</h3>
+            <p>Numbered menu shows Provider&nbsp;&gt;&nbsp;Model. Pick a number, env vars are set instantly.</p>
         </div>
-    </section>
+        <div class="feat">
+            <div class="feat-ico ico-azure">🔑</div>
+            <h3>Key Management</h3>
+            <p>Prompts for missing API keys inline and saves them to your shell profile. Run <code>cpm keys</code> anytime.</p>
+        </div>
+        <div class="feat">
+            <div class="feat-ico ico-sage">📦</div>
+            <h3>VS Code Import</h3>
+            <p>Already set up BYOK models in VS&nbsp;Code? Import them instantly with <code>cpm import</code>.</p>
+        </div>
+        <div class="feat">
+            <div class="feat-ico ico-coral">🐚</div>
+            <h3>Bash, Zsh &amp; PowerShell</h3>
+            <p>Shell function design means env vars stick in your session. Works everywhere.</p>
+        </div>
+        <div class="feat">
+            <div class="feat-ico ico-azure">🔒</div>
+            <h3>No Secrets in Config</h3>
+            <p>Config stores env var <em>names</em>, never actual keys. Secrets stay in your shell profile.</p>
+        </div>
+        <div class="feat">
+            <div class="feat-ico ico-sage">📝</div>
+            <h3>Simple JSON Config</h3>
+            <p>One file at <code>~/.config/cpm/models.json</code>. Open it with <code>cpm edit</code>.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ── COMMANDS ──────────────────────────────────────────────── -->
+<section class="commands wrap" id="commands">
+    <div class="section-tag">Reference</div>
+    <h2 class="section-h">All commands</h2>
+    <div class="cmd-list">
+        <div class="cmd-row"><span class="cmd-k">cpm</span>         <span class="cmd-v">Interactive model picker</span></div>
+        <div class="cmd-row"><span class="cmd-k">cpm status</span>  <span class="cmd-v">Show active model</span></div>
+        <div class="cmd-row"><span class="cmd-k">cpm list</span>    <span class="cmd-v">List all models</span></div>
+        <div class="cmd-row"><span class="cmd-k">cpm keys</span>    <span class="cmd-v">Show &amp; set API keys</span></div>
+        <div class="cmd-row"><span class="cmd-k">cpm edit</span>    <span class="cmd-v">Open config in $EDITOR</span></div>
+        <div class="cmd-row"><span class="cmd-k">cpm import</span>  <span class="cmd-v">Import from VS Code</span></div>
+        <div class="cmd-row"><span class="cmd-k">cpm clear</span>   <span class="cmd-v">Unset all provider vars</span></div>
+        <div class="cmd-row"><span class="cmd-k">cpm help</span>    <span class="cmd-v">Show help</span></div>
+    </div>
+</section>
+
 </main>
 
 <footer>
-    <p>Built by <a href="https://postrboard.com">Burke Holland</a> · <a href="https://github.com/burkeholland/cpm">View on GitHub</a></p>
+    <p>Built by <a href="https://postrboard.com">Burke Holland</a> · <a href="https://github.com/burkeholland/cpm">Source on GitHub</a></p>
 </footer>
 
 <script>
-// Tab switching
-document.querySelectorAll('.install-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.install-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('on'));
+        document.querySelectorAll('.tab-body').forEach(x => x.classList.remove('on'));
+        t.classList.add('on');
+        document.getElementById('t-' + t.dataset.t).classList.add('on');
     });
 });
 
-// Copy button
-document.querySelectorAll('.copy-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        navigator.clipboard.writeText(btn.dataset.copy).then(() => {
-            btn.classList.add('copied');
-            btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 8 6.5 11.5 13 5"/></svg> Copied!`;
-            setTimeout(() => {
-                btn.classList.remove('copied');
-                btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg> Copy`;
-            }, 2000);
+document.querySelectorAll('.copy-btn').forEach(b => {
+    b.addEventListener('click', () => {
+        navigator.clipboard.writeText(b.dataset.copy).then(() => {
+            b.classList.add('ok');
+            const orig = b.innerHTML;
+            b.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 8 6.5 11.5 13 5"/></svg> Copied';
+            setTimeout(() => { b.classList.remove('ok'); b.innerHTML = orig; }, 2000);
         });
     });
 });

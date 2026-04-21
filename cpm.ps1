@@ -116,21 +116,32 @@ function _cpm_pick {
         return
     }
 
+    $total = $entries.Count + 1
+
     Write-Host "Pick a model:"
     Write-Host ""
+    Write-Host "  1) Copilot (built-in)"
     for ($i = 0; $i -lt $entries.Count; $i++) {
-        Write-Host "  $($i + 1)) $($entries[$i].Label)"
+        Write-Host "  $($i + 2)) $($entries[$i].Label)"
     }
     Write-Host ""
 
     do {
-        $input = Read-Host "Enter number (1-$($entries.Count))"
+        $input = Read-Host "Enter number (1-$total)"
         $choice = 0
-        $valid = [int]::TryParse($input, [ref]$choice) -and $choice -ge 1 -and $choice -le $entries.Count
+        $valid = [int]::TryParse($input, [ref]$choice) -and $choice -ge 1 -and $choice -le $total
         if (-not $valid) { Write-Host "Invalid choice." }
     } while (-not $valid)
 
-    $selected = $entries[$choice - 1]
+    # Option 1 = built-in (clear all BYOK vars)
+    if ($choice -eq 1) {
+        _cpm_clear
+        Write-Host ""
+        Write-Host "✓ Switched to Copilot (built-in)"
+        return
+    }
+
+    $selected = $entries[$choice - 2]
 
     $env:COPILOT_PROVIDER_BASE_URL = $selected.BaseUrl
     $env:COPILOT_PROVIDER_TYPE = $selected.ProviderType

@@ -138,6 +138,8 @@ function _cpm_pick {
         _cpm_clear
         Write-Host ""
         Write-Host "✓ Switched to Copilot (built-in)"
+        Write-Host ""
+        & copilot
         return
     }
 
@@ -184,6 +186,8 @@ function _cpm_pick {
 
     Write-Host ""
     Write-Host "✓ Switched to $($selected.Label)"
+    Write-Host ""
+    & copilot
 }
 
 # ── key management ───────────────────────────────────────────────────────

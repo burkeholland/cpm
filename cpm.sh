@@ -250,6 +250,8 @@ _cpm_pick() {
     _cpm_clear
     echo ""
     echo "✓ Switched to Copilot (built-in)"
+    echo ""
+    copilot
     return 0
   fi
 
@@ -311,6 +313,8 @@ _cpm_pick() {
   label=$(printf '%s' "$selected" | jq -r '.label')
   echo ""
   echo "✓ Switched to $label"
+  echo ""
+  copilot
 }
 
 # ── VS Code import ──────────────────────────────────────────────────────

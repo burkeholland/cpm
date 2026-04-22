@@ -324,7 +324,7 @@ _cpm_remove() {
   done
 
   # Map choice back to provider/model index
-  local idx=0 removed_name removed_mid removed_pn
+  local idx=0 removed_name removed_mid removed_pn removed_key_env _rm_key rc_file
   pi=0
   while [ "$pi" -lt "$provider_count" ]; do
     model_count=$(jq ".providers[$pi].models | length" "$CPM_CONFIG_FILE")
@@ -332,9 +332,23 @@ _cpm_remove() {
     idx=$((idx + 1))
     if [ "$idx" -eq "$choice" ]; then
       removed_name=$(jq -r ".providers[$pi].name" "$CPM_CONFIG_FILE")
+      removed_key_env=$(jq -r ".providers[$pi].api_key_env // \"\"" "$CPM_CONFIG_FILE")
       jq --argjson i "$pi" 'del(.providers[$i])' "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" \
         && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
       echo "✓ Removed provider '$removed_name'"
+
+      # Offer to remove API key from shell profile
+      if [ -n "$removed_key_env" ] && [ "$removed_key_env" != "null" ]; then
+        rc_file="$HOME/.$(basename "${SHELL:-bash}")rc"
+        if [ -f "$rc_file" ] && grep -q "^export ${removed_key_env}=" "$rc_file"; then
+          echo ""
+          printf "Also remove \$%s from %s? [y/N] " "$removed_key_env" "$rc_file"
+          read -r _rm_key
+          if [ "$_rm_key" = "y" ] || [ "$_rm_key" = "Y" ]; then
+            _cpm_remove_key "$removed_key_env"
+          fi
+        fi
+      fi
       return 0
     fi
 
@@ -645,6 +659,27 @@ _cpm_persist_key() {
   fi
 
   printf '\nexport %s="%s"\n' "$env_name" "$key_value" >> "$rc_file"
+}
+
+_cpm_remove_key() {
+  local env_name="$1"
+  local rc_file=""
+  local current_shell
+  current_shell=$(basename "${SHELL:-bash}")
+
+  case "$current_shell" in
+    zsh)  rc_file="$HOME/.zshrc" ;;
+    bash) rc_file="$HOME/.bashrc" ;;
+    *)    rc_file="$HOME/.bashrc" ;;
+  esac
+
+  if [ -f "$rc_file" ] && grep -q "^export ${env_name}=" "$rc_file"; then
+    local tmp_rc
+    tmp_rc=$(grep -v "^export ${env_name}=" "$rc_file")
+    printf '%s\n' "$tmp_rc" > "$rc_file"
+    unset "$env_name"
+    echo "  ✓ Removed $env_name from $rc_file"
+  fi
 }
 
 # ── interactive picker ──────────────────────────────────────────────────

@@ -218,9 +218,25 @@ function _cpm_remove {
 
     if ($selected.Type -eq "provider") {
         $name = $config.providers[$selected.PI].name
+        $keyEnv = $config.providers[$selected.PI].api_key_env
         $config.providers = @($config.providers | Where-Object { $_ -ne $config.providers[$selected.PI] })
         $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
         Write-Host "✓ Removed provider '$name'"
+
+        # Offer to remove API key from profile
+        if ($keyEnv) {
+            $profilePath = $PROFILE
+            if ($profilePath -and (Test-Path $profilePath) -and (Select-String -Path $profilePath -Pattern "^\`$env:$keyEnv" -Quiet)) {
+                Write-Host ""
+                $rmKey = Read-Host "Also remove `$$keyEnv from your PowerShell profile? [y/N]"
+                if ($rmKey -eq 'y' -or $rmKey -eq 'Y') {
+                    $content = Get-Content $profilePath | Where-Object { $_ -notmatch "^\`$env:$keyEnv\s*=" }
+                    $content | Set-Content $profilePath
+                    Remove-Item "Env:$keyEnv" -ErrorAction SilentlyContinue
+                    Write-Host "  ✓ Removed $keyEnv from profile"
+                }
+            }
+        }
     } else {
         $pn = $config.providers[$selected.PI].name
         $mn = $config.providers[$selected.PI].models[$selected.MI].id

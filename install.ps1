@@ -5,7 +5,8 @@ $ErrorActionPreference = "Stop"
 $CpmConfigDir = if ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "cpm" } else { Join-Path $HOME ".config" "cpm" }
 $CpmConfigFile = Join-Path $CpmConfigDir "models.json"
 $CpmPsFile = Join-Path $CpmConfigDir "cpm.ps1"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
+$RemoteBase = "https://raw.githubusercontent.com/burkeholland/cpm/main"
 
 Write-Host "Installing cpm..."
 Write-Host ""
@@ -13,8 +14,15 @@ Write-Host ""
 # ── create config dir ────────────────────────────────────────────────
 New-Item -ItemType Directory -Path $CpmConfigDir -Force | Out-Null
 
-# ── copy PowerShell function ─────────────────────────────────────────
-Copy-Item (Join-Path $ScriptDir "cpm.ps1") $CpmPsFile -Force
+# ── copy or download PowerShell function ─────────────────────────────
+$localSource = if ($ScriptDir) { Join-Path $ScriptDir "cpm.ps1" } else { $null }
+
+if ($localSource -and (Test-Path $localSource)) {
+    Copy-Item $localSource $CpmPsFile -Force
+} else {
+    Write-Host "Downloading cpm.ps1 from GitHub..."
+    Invoke-RestMethod "$RemoteBase/cpm.ps1" -OutFile $CpmPsFile
+}
 Write-Host "✓ Installed PowerShell function to $CpmPsFile"
 
 # ── create default config if missing ─────────────────────────────────

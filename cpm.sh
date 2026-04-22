@@ -28,6 +28,7 @@ cpm() {
     import)  _cpm_import ;;
     clear)   _cpm_clear ;;
     keys)    _cpm_keys ;;
+    config)  shift; _cpm_config "$@" ;;
     help)    _cpm_help ;;
     "")      _cpm_pick ;;
     *)
@@ -82,6 +83,64 @@ _cpm_clear() {
   echo "Cleared all Copilot provider env vars."
 }
 
+# ── config get/set ──────────────────────────────────────────────────────
+
+_cpm_config() {
+  local key="${1:-}"
+  local val="${2:-}"
+
+  if [ -z "$key" ]; then
+    echo "Usage: cpm config <key> [value]"
+    echo ""
+    echo "Keys:"
+    echo "  launch   Command to run after picking a model (default: copilot)"
+    echo ""
+    echo "Examples:"
+    echo "  cpm config launch            # show current value"
+    echo "  cpm config launch yolo        # set to 'yolo'"
+    echo '  cpm config launch ""          # disable auto-launch'
+    return 0
+  fi
+
+  case "$key" in
+    launch)
+      if [ -z "$val" ] && [ "$#" -lt 2 ]; then
+        # show current value
+        local current
+        current=$(jq -r '.launch // "copilot"' "$CPM_CONFIG_FILE")
+        if [ -z "$current" ]; then
+          echo "launch: (disabled)"
+        else
+          echo "launch: $current"
+        fi
+      else
+        # set value (including empty string to disable)
+        jq --arg v "$val" '.launch = $v' "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" \
+          && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+        if [ -z "$val" ]; then
+          echo "✓ Auto-launch disabled"
+        else
+          echo "✓ launch set to: $val"
+        fi
+      fi
+      ;;
+    *)
+      echo "cpm config: unknown key '$key'" >&2
+      return 1
+      ;;
+  esac
+}
+
+# ── launch copilot (or configured command) ──────────────────────────────
+
+_cpm_launch() {
+  local cmd
+  cmd=$(jq -r '.launch // "copilot"' "$CPM_CONFIG_FILE")
+  if [ -n "$cmd" ]; then
+    eval "$cmd"
+  fi
+}
+
 _cpm_help() {
   cat <<'EOF'
 Usage: cpm [command]
@@ -91,6 +150,7 @@ Commands:
   status    Show the currently active model
   list      List all configured models
   keys      Show / set API keys for all providers
+  config    Get/set config values (e.g. cpm config launch yolo)
   edit      Open models.json in $EDITOR
   import    Import models from VS Code chatLanguageModels.json
   clear     Unset all Copilot provider env vars
@@ -251,7 +311,7 @@ _cpm_pick() {
     echo ""
     echo "✓ Switched to Copilot (built-in)"
     echo ""
-    copilot
+    _cpm_launch
     return 0
   fi
 
@@ -314,7 +374,7 @@ _cpm_pick() {
   echo ""
   echo "✓ Switched to $label"
   echo ""
-  copilot
+  _cpm_launch
 }
 
 # ── VS Code import ──────────────────────────────────────────────────────

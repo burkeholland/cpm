@@ -22,6 +22,7 @@ function cpm {
         "import"  { _cpm_import }
         "clear"   { _cpm_clear }
         "keys"    { _cpm_keys }
+        "config"  { _cpm_config @args }
         "help"    { _cpm_help }
         ""        { _cpm_pick }
         default {
@@ -84,11 +85,63 @@ Commands:
   status    Show the currently active model
   list      List all configured models
   keys      Show / set API keys for all providers
+  config    Get/set config values (e.g. cpm config launch yolo)
   edit      Open models.json in `$EDITOR
   import    Import models from VS Code chatLanguageModels.json
   clear     Unset all Copilot provider env vars
   help      Show this help
 "@
+}
+
+# ── config get/set ───────────────────────────────────────────────────────
+
+function _cpm_config {
+    param(
+        [Parameter(Position = 0)]
+        [string]$Key = "",
+        [Parameter(Position = 1)]
+        [string]$Value
+    )
+
+    if (-not $Key) {
+        Write-Host "Usage: cpm config <key> [value]"
+        Write-Host ""
+        Write-Host "Keys:"
+        Write-Host "  launch   Command to run after picking a model (default: copilot)"
+        Write-Host ""
+        Write-Host "Examples:"
+        Write-Host "  cpm config launch            # show current value"
+        Write-Host "  cpm config launch yolo        # set to 'yolo'"
+        Write-Host '  cpm config launch ""          # disable auto-launch'
+        return
+    }
+
+    switch ($Key) {
+        "launch" {
+            $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
+            if (-not $PSBoundParameters.ContainsKey('Value')) {
+                $current = if ($null -ne $config.launch) { $config.launch } else { "copilot" }
+                if (-not $current) { Write-Host "launch: (disabled)" } else { Write-Host "launch: $current" }
+            } else {
+                $config | Add-Member -NotePropertyName "launch" -NotePropertyValue $Value -Force
+                $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
+                if (-not $Value) { Write-Host "✓ Auto-launch disabled" } else { Write-Host "✓ launch set to: $Value" }
+            }
+        }
+        default {
+            Write-Error "cpm config: unknown key '$Key'"
+        }
+    }
+}
+
+# ── launch copilot (or configured command) ───────────────────────────────
+
+function _cpm_launch {
+    $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
+    $cmd = if ($null -ne $config.launch) { $config.launch } else { "copilot" }
+    if ($cmd) {
+        Invoke-Expression $cmd
+    }
 }
 
 # ── interactive picker ───────────────────────────────────────────────────
@@ -139,7 +192,7 @@ function _cpm_pick {
         Write-Host ""
         Write-Host "✓ Switched to Copilot (built-in)"
         Write-Host ""
-        & copilot
+        _cpm_launch
         return
     }
 
@@ -187,7 +240,7 @@ function _cpm_pick {
     Write-Host ""
     Write-Host "✓ Switched to $($selected.Label)"
     Write-Host ""
-    & copilot
+    _cpm_launch
 }
 
 # ── key management ───────────────────────────────────────────────────────

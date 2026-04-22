@@ -18,6 +18,9 @@ function cpm {
     switch ($Command) {
         "status"  { _cpm_status }
         "list"    { _cpm_list }
+        "add"     { _cpm_add }
+        "remove"  { _cpm_remove }
+        "update"  { _cpm_update }
         "edit"    { _cpm_edit }
         "import"  { _cpm_import }
         "clear"   { _cpm_clear }
@@ -76,6 +79,274 @@ function _cpm_clear {
     Write-Host "Cleared all Copilot provider env vars."
 }
 
+# ── add provider/model wizard ────────────────────────────────────────────
+
+function _cpm_add {
+    $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
+
+    Write-Host "Add a model"
+    Write-Host ""
+
+    $providerIdx = -1
+    $providerCount = $config.providers.Count
+
+    if ($providerCount -gt 0) {
+        Write-Host "Provider:"
+        for ($i = 0; $i -lt $providerCount; $i++) {
+            Write-Host "  $($i + 1)) $($config.providers[$i].name)"
+        }
+        Write-Host "  $($providerCount + 1)) + New provider"
+        Write-Host ""
+
+        do {
+            $inp = Read-Host "Pick a provider (1-$($providerCount + 1))"
+            $pc = 0
+            $valid = [int]::TryParse($inp, [ref]$pc) -and $pc -ge 1 -and $pc -le ($providerCount + 1)
+            if (-not $valid) { Write-Host "Invalid choice." }
+        } while (-not $valid)
+
+        if ($pc -le $providerCount) {
+            $providerIdx = $pc - 1
+        }
+    }
+
+    if ($providerIdx -eq -1) {
+        Write-Host ""
+        Write-Host "New provider setup:"
+        Write-Host ""
+
+        $pname = Read-Host "  Name (e.g. OpenRouter, Ollama)"
+        if (-not $pname) { Write-Host "Cancelled."; return }
+
+        $purl = Read-Host "  Base URL (e.g. https://openrouter.ai/api/v1)"
+        if (-not $purl) { Write-Host "Cancelled."; return }
+
+        $ptype = Read-Host "  Provider type [openai]"
+        if (-not $ptype) { $ptype = "openai" }
+
+        $pkey = Read-Host "  API key env var name (e.g. OPENROUTER_API_KEY, blank for none)"
+
+        $newProvider = [PSCustomObject]@{
+            name          = $pname
+            base_url      = $purl
+            provider_type = $ptype
+            api_key_env   = $pkey
+            models        = @()
+        }
+        $config.providers += $newProvider
+        $providerIdx = $config.providers.Count - 1
+        Write-Host ""
+        Write-Host "  ✓ Provider '$pname' added"
+
+        if ($pkey) {
+            $existing = [System.Environment]::GetEnvironmentVariable($pkey)
+            if (-not $existing) {
+                Write-Host ""
+                $keyVal = Read-Host "  Paste your $pkey now (or Enter to skip)"
+                if ($keyVal) {
+                    [System.Environment]::SetEnvironmentVariable($pkey, $keyVal, "Process")
+                    _cpm_persist_key_ps $pkey $keyVal
+                    Write-Host "  ✓ Key set and saved to profile."
+                }
+            }
+        }
+    }
+
+    Write-Host ""
+    Write-Host "New model:"
+    Write-Host ""
+
+    $mid = Read-Host "  Model ID (e.g. gpt-4o, claude-opus-4-5)"
+    if (-not $mid) { Write-Host "Cancelled."; return }
+
+    $mprompt = Read-Host "  Max prompt tokens [128000]"
+    if (-not $mprompt) { $mprompt = "128000" }
+
+    $moutput = Read-Host "  Max output tokens [16000]"
+    if (-not $moutput) { $moutput = "16000" }
+
+    $newModel = [PSCustomObject]@{
+        id                = $mid
+        max_prompt_tokens = [int]$mprompt
+        max_output_tokens = [int]$moutput
+    }
+    $config.providers[$providerIdx].models += $newModel
+    $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
+
+    $provName = $config.providers[$providerIdx].name
+    Write-Host ""
+    Write-Host "✓ Added $provName > $mid"
+}
+
+# ── remove provider/model ────────────────────────────────────────────────
+
+function _cpm_remove {
+    $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
+
+    Write-Host "Remove a provider or model"
+    Write-Host ""
+
+    if ($config.providers.Count -eq 0) {
+        Write-Host "No providers configured."
+        return
+    }
+
+    # Build flat list
+    $items = @()
+    foreach ($provider in $config.providers) {
+        $pi = [array]::IndexOf($config.providers, $provider)
+        $items += [PSCustomObject]@{ Type = "provider"; PI = $pi; MI = -1; Label = "✗ Remove provider '$($provider.name)' (and all its models)" }
+        for ($mi = 0; $mi -lt $provider.models.Count; $mi++) {
+            $items += [PSCustomObject]@{ Type = "model"; PI = $pi; MI = $mi; Label = "  ✗ Remove model '$($provider.models[$mi].id)' from $($provider.name)" }
+        }
+    }
+
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        Write-Host "  $($i + 1)) $($items[$i].Label)"
+    }
+    Write-Host ""
+
+    do {
+        $inp = Read-Host "Pick item to remove (1-$($items.Count), or 'q' to cancel)"
+        if ($inp -eq 'q') { Write-Host "Cancelled."; return }
+        $choice = 0
+        $valid = [int]::TryParse($inp, [ref]$choice) -and $choice -ge 1 -and $choice -le $items.Count
+        if (-not $valid) { Write-Host "Invalid choice." }
+    } while (-not $valid)
+
+    $selected = $items[$choice - 1]
+
+    if ($selected.Type -eq "provider") {
+        $name = $config.providers[$selected.PI].name
+        $config.providers = @($config.providers | Where-Object { $_ -ne $config.providers[$selected.PI] })
+        $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
+        Write-Host "✓ Removed provider '$name'"
+    } else {
+        $pn = $config.providers[$selected.PI].name
+        $mn = $config.providers[$selected.PI].models[$selected.MI].id
+        $config.providers[$selected.PI].models = @($config.providers[$selected.PI].models | Where-Object { $_ -ne $config.providers[$selected.PI].models[$selected.MI] })
+        $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
+        Write-Host "✓ Removed model '$mn' from $pn"
+    }
+}
+
+# ── update provider/model ────────────────────────────────────────────────
+
+function _cpm_update {
+    $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
+
+    Write-Host "Update a provider or model"
+    Write-Host ""
+    Write-Host "What do you want to update?"
+    Write-Host "  1) A provider's settings"
+    Write-Host "  2) A model's settings"
+    Write-Host ""
+
+    do {
+        $inp = Read-Host "Pick (1-2, or 'q' to cancel)"
+        if ($inp -eq 'q') { Write-Host "Cancelled."; return }
+        $valid = $inp -eq '1' -or $inp -eq '2'
+        if (-not $valid) { Write-Host "Invalid choice." }
+    } while (-not $valid)
+
+    if ($inp -eq '1') {
+        # Update provider
+        if ($config.providers.Count -eq 0) { Write-Host "No providers configured."; return }
+
+        Write-Host ""
+        Write-Host "Pick a provider to update:"
+        for ($i = 0; $i -lt $config.providers.Count; $i++) {
+            Write-Host "  $($i + 1)) $($config.providers[$i].name)"
+        }
+        Write-Host ""
+
+        do {
+            $pinp = Read-Host "Pick (1-$($config.providers.Count))"
+            $pc = 0
+            $pvalid = [int]::TryParse($pinp, [ref]$pc) -and $pc -ge 1 -and $pc -le $config.providers.Count
+            if (-not $pvalid) { Write-Host "Invalid choice." }
+        } while (-not $pvalid)
+
+        $p = $config.providers[$pc - 1]
+        Write-Host ""
+        Write-Host "Editing '$($p.name)' (press Enter to keep current value):"
+        Write-Host ""
+
+        $newName = Read-Host "  Name [$($p.name)]"
+        if (-not $newName) { $newName = $p.name }
+
+        $newUrl = Read-Host "  Base URL [$($p.base_url)]"
+        if (-not $newUrl) { $newUrl = $p.base_url }
+
+        $curType = if ($p.provider_type) { $p.provider_type } else { "openai" }
+        $newType = Read-Host "  Provider type [$curType]"
+        if (-not $newType) { $newType = $curType }
+
+        $curKey = if ($p.api_key_env) { $p.api_key_env } else { "" }
+        $newKey = Read-Host "  API key env var [$curKey]"
+        if (-not $newKey) { $newKey = $curKey }
+
+        $p.name = $newName
+        $p.base_url = $newUrl
+        $p | Add-Member -NotePropertyName "provider_type" -NotePropertyValue $newType -Force
+        $p | Add-Member -NotePropertyName "api_key_env" -NotePropertyValue $newKey -Force
+        $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
+        Write-Host ""
+        Write-Host "✓ Updated provider '$newName'"
+    } else {
+        # Update model
+        $items = @()
+        foreach ($provider in $config.providers) {
+            $pi = [array]::IndexOf($config.providers, $provider)
+            for ($mi = 0; $mi -lt $provider.models.Count; $mi++) {
+                $items += [PSCustomObject]@{ PI = $pi; MI = $mi; Label = "$($provider.name) > $($provider.models[$mi].id)" }
+            }
+        }
+
+        if ($items.Count -eq 0) { Write-Host "No models configured."; return }
+
+        Write-Host ""
+        Write-Host "Pick a model to update:"
+        for ($i = 0; $i -lt $items.Count; $i++) {
+            Write-Host "  $($i + 1)) $($items[$i].Label)"
+        }
+        Write-Host ""
+
+        do {
+            $minp = Read-Host "Pick (1-$($items.Count))"
+            $mc = 0
+            $mvalid = [int]::TryParse($minp, [ref]$mc) -and $mc -ge 1 -and $mc -le $items.Count
+            if (-not $mvalid) { Write-Host "Invalid choice." }
+        } while (-not $mvalid)
+
+        $sel = $items[$mc - 1]
+        $m = $config.providers[$sel.PI].models[$sel.MI]
+        $pn = $config.providers[$sel.PI].name
+
+        Write-Host ""
+        Write-Host "Editing '$pn > $($m.id)' (press Enter to keep current value):"
+        Write-Host ""
+
+        $newId = Read-Host "  Model ID [$($m.id)]"
+        if (-not $newId) { $newId = $m.id }
+
+        $curPrompt = if ($m.max_prompt_tokens) { $m.max_prompt_tokens } else { 128000 }
+        $newPrompt = Read-Host "  Max prompt tokens [$curPrompt]"
+        if (-not $newPrompt) { $newPrompt = $curPrompt }
+
+        $curOutput = if ($m.max_output_tokens) { $m.max_output_tokens } else { 16000 }
+        $newOutput = Read-Host "  Max output tokens [$curOutput]"
+        if (-not $newOutput) { $newOutput = $curOutput }
+
+        $m.id = $newId
+        $m | Add-Member -NotePropertyName "max_prompt_tokens" -NotePropertyValue ([int]$newPrompt) -Force
+        $m | Add-Member -NotePropertyName "max_output_tokens" -NotePropertyValue ([int]$newOutput) -Force
+        $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
+        Write-Host ""
+        Write-Host "✓ Updated $pn > $newId"
+    }
+}
+
 function _cpm_help {
     Write-Host @"
 Usage: cpm [command]
@@ -84,6 +355,9 @@ Commands:
   (none)    Interactive model picker
   status    Show the currently active model
   list      List all configured models
+  add       Add a new provider or model
+  remove    Remove a provider or model
+  update    Edit a provider or model's settings
   keys      Show / set API keys for all providers
   config    Get/set config values (e.g. cpm config launch yolo)
   edit      Open models.json in `$EDITOR

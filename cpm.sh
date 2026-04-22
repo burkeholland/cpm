@@ -24,6 +24,9 @@ cpm() {
   case "$sub" in
     status)  _cpm_status ;;
     list)    _cpm_list ;;
+    add)     _cpm_add ;;
+    remove)  _cpm_remove ;;
+    update)  _cpm_update ;;
     edit)    _cpm_edit ;;
     import)  _cpm_import ;;
     clear)   _cpm_clear ;;
@@ -141,6 +144,400 @@ _cpm_launch() {
   fi
 }
 
+# ── add provider/model wizard ────────────────────────────────────────────
+
+_cpm_add() {
+  echo "Add a model"
+  echo ""
+
+  # Step 1: pick or create provider
+  local provider_count provider_names
+  provider_count=$(jq '.providers | length' "$CPM_CONFIG_FILE")
+
+  local provider_idx=-1
+  if [ "$provider_count" -gt 0 ]; then
+    echo "Provider:"
+    local pi=0
+    while [ "$pi" -lt "$provider_count" ]; do
+      local pn
+      pn=$(jq -r ".providers[$pi].name" "$CPM_CONFIG_FILE")
+      echo "  $((pi + 1))) $pn"
+      pi=$((pi + 1))
+    done
+    echo "  $((provider_count + 1))) + New provider"
+    echo ""
+
+    local pchoice
+    while true; do
+      printf "Pick a provider (1-%d): " "$((provider_count + 1))"
+      read -r pchoice
+      case "$pchoice" in
+        ''|*[!0-9]*) echo "Invalid choice." >&2; continue ;;
+      esac
+      if [ "$pchoice" -ge 1 ] && [ "$pchoice" -le "$((provider_count + 1))" ]; then
+        break
+      fi
+      echo "Invalid choice." >&2
+    done
+
+    if [ "$pchoice" -le "$provider_count" ]; then
+      provider_idx=$((pchoice - 1))
+    fi
+  fi
+
+  # Step 2: create new provider if needed
+  if [ "$provider_idx" -eq -1 ]; then
+    echo ""
+    echo "New provider setup:"
+    echo ""
+
+    local pname purl ptype pkey
+
+    printf "  Name (e.g. OpenRouter, Ollama): "
+    read -r pname
+    if [ -z "$pname" ]; then
+      echo "Cancelled." >&2
+      return 1
+    fi
+
+    printf "  Base URL (e.g. https://openrouter.ai/api/v1): "
+    read -r purl
+    if [ -z "$purl" ]; then
+      echo "Cancelled." >&2
+      return 1
+    fi
+
+    printf "  Provider type [openai]: "
+    read -r ptype
+    ptype="${ptype:-openai}"
+
+    printf "  API key env var name (e.g. OPENROUTER_API_KEY, blank for none): "
+    read -r pkey
+
+    # Append new provider with empty models array
+    jq --arg n "$pname" --arg u "$purl" --arg t "$ptype" --arg k "$pkey" \
+      '.providers += [{ name: $n, base_url: $u, provider_type: $t, api_key_env: $k, models: [] }]' \
+      "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+
+    provider_idx=$(jq '.providers | length - 1' "$CPM_CONFIG_FILE")
+    echo ""
+    echo "  ✓ Provider '$pname' added"
+
+    # Offer to set API key now
+    if [ -n "$pkey" ]; then
+      eval "_existing_key=\"\${${pkey}:-}\""
+      if [ -z "$_existing_key" ]; then
+        echo ""
+        printf "  Paste your %s now (or Enter to skip): " "$pkey"
+        read -r _key_val
+        if [ -n "$_key_val" ]; then
+          export "$pkey=$_key_val"
+          _cpm_persist_key "$pkey" "$_key_val"
+          echo "  ✓ Key set and saved to shell profile."
+        fi
+      fi
+    fi
+  fi
+
+  # Step 3: add model to the provider
+  echo ""
+  echo "New model:"
+  echo ""
+
+  local mid mprompt moutput
+
+  printf "  Model ID (e.g. gpt-4o, claude-opus-4-5): "
+  read -r mid
+  if [ -z "$mid" ]; then
+    echo "Cancelled." >&2
+    return 1
+  fi
+
+  printf "  Max prompt tokens [128000]: "
+  read -r mprompt
+  mprompt="${mprompt:-128000}"
+
+  printf "  Max output tokens [16000]: "
+  read -r moutput
+  moutput="${moutput:-16000}"
+
+  jq --argjson pi "$provider_idx" --arg id "$mid" --argjson mp "$mprompt" --argjson mo "$moutput" \
+    '.providers[$pi].models += [{ id: $id, max_prompt_tokens: $mp, max_output_tokens: $mo }]' \
+    "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+
+  local provname
+  provname=$(jq -r ".providers[$provider_idx].name" "$CPM_CONFIG_FILE")
+
+  echo ""
+  echo "✓ Added $provname > $mid"
+}
+
+# ── remove provider/model ────────────────────────────────────────────────
+
+_cpm_remove() {
+  echo "Remove a provider or model"
+  echo ""
+
+  local provider_count pn model_count mi mid
+  provider_count=$(jq '.providers | length' "$CPM_CONFIG_FILE")
+
+  if [ "$provider_count" -eq 0 ]; then
+    echo "No providers configured."
+    return 0
+  fi
+
+  # Show numbered list
+  local entries=0 pi=0
+  while [ "$pi" -lt "$provider_count" ]; do
+    pn=$(jq -r ".providers[$pi].name" "$CPM_CONFIG_FILE")
+    model_count=$(jq ".providers[$pi].models | length" "$CPM_CONFIG_FILE")
+
+    entries=$((entries + 1))
+    echo "  $entries) ✗ Remove provider '$pn' (and all its models)"
+
+    mi=0
+    while [ "$mi" -lt "$model_count" ]; do
+      entries=$((entries + 1))
+      mid=$(jq -r ".providers[$pi].models[$mi].id" "$CPM_CONFIG_FILE")
+      echo "  $entries)   ✗ Remove model '$mid' from $pn"
+      mi=$((mi + 1))
+    done
+    pi=$((pi + 1))
+  done
+  echo ""
+
+  local choice
+  while true; do
+    printf "Pick item to remove (1-%d, or 'q' to cancel): " "$entries"
+    read -r choice
+    if [ "$choice" = "q" ] || [ "$choice" = "Q" ]; then
+      echo "Cancelled."
+      return 0
+    fi
+    case "$choice" in
+      ''|*[!0-9]*) echo "Invalid choice." >&2; continue ;;
+    esac
+    if [ "$choice" -ge 1 ] && [ "$choice" -le "$entries" ]; then
+      break
+    fi
+    echo "Invalid choice." >&2
+  done
+
+  # Map choice back to provider/model index
+  local idx=0 removed_name removed_mid removed_pn
+  pi=0
+  while [ "$pi" -lt "$provider_count" ]; do
+    model_count=$(jq ".providers[$pi].models | length" "$CPM_CONFIG_FILE")
+
+    idx=$((idx + 1))
+    if [ "$idx" -eq "$choice" ]; then
+      removed_name=$(jq -r ".providers[$pi].name" "$CPM_CONFIG_FILE")
+      jq --argjson i "$pi" 'del(.providers[$i])' "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" \
+        && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+      echo "✓ Removed provider '$removed_name'"
+      return 0
+    fi
+
+    mi=0
+    while [ "$mi" -lt "$model_count" ]; do
+      idx=$((idx + 1))
+      if [ "$idx" -eq "$choice" ]; then
+        removed_pn=$(jq -r ".providers[$pi].name" "$CPM_CONFIG_FILE")
+        removed_mid=$(jq -r ".providers[$pi].models[$mi].id" "$CPM_CONFIG_FILE")
+        jq --argjson pi "$pi" --argjson mi "$mi" 'del(.providers[$pi].models[$mi])' \
+          "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" \
+          && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+        echo "✓ Removed model '$removed_mid' from $removed_pn"
+        return 0
+      fi
+      mi=$((mi + 1))
+    done
+    pi=$((pi + 1))
+  done
+}
+
+# ── update provider/model ────────────────────────────────────────────────
+
+_cpm_update() {
+  echo "Update a provider or model"
+  echo ""
+  echo "What do you want to update?"
+  echo "  1) A provider's settings"
+  echo "  2) A model's settings"
+  echo ""
+
+  local what
+  while true; do
+    printf "Pick (1-2, or 'q' to cancel): "
+    read -r what
+    if [ "$what" = "q" ] || [ "$what" = "Q" ]; then echo "Cancelled."; return 0; fi
+    if [ "$what" = "1" ] || [ "$what" = "2" ]; then break; fi
+    echo "Invalid choice." >&2
+  done
+
+  local provider_count
+  provider_count=$(jq '.providers | length' "$CPM_CONFIG_FILE")
+
+  if [ "$provider_count" -eq 0 ]; then
+    echo "No providers configured."
+    return 0
+  fi
+
+  if [ "$what" = "1" ]; then
+    _cpm_update_provider "$provider_count"
+  else
+    _cpm_update_model "$provider_count"
+  fi
+}
+
+_cpm_update_provider() {
+  local provider_count="$1"
+  local pn pi pchoice pidx
+
+  echo ""
+  echo "Pick a provider to update:"
+  pi=0
+  while [ "$pi" -lt "$provider_count" ]; do
+    pn=$(jq -r ".providers[$pi].name" "$CPM_CONFIG_FILE")
+    echo "  $((pi + 1))) $pn"
+    pi=$((pi + 1))
+  done
+  echo ""
+
+  while true; do
+    printf "Pick (1-%d): " "$provider_count"
+    read -r pchoice
+    case "$pchoice" in
+      ''|*[!0-9]*) echo "Invalid choice." >&2; continue ;;
+    esac
+    if [ "$pchoice" -ge 1 ] && [ "$pchoice" -le "$provider_count" ]; then break; fi
+    echo "Invalid choice." >&2
+  done
+
+  local pidx=$((pchoice - 1))
+  local cur_name cur_url cur_type cur_key
+
+  cur_name=$(jq -r ".providers[$pidx].name" "$CPM_CONFIG_FILE")
+  cur_url=$(jq -r ".providers[$pidx].base_url" "$CPM_CONFIG_FILE")
+  cur_type=$(jq -r ".providers[$pidx].provider_type // \"openai\"" "$CPM_CONFIG_FILE")
+  cur_key=$(jq -r ".providers[$pidx].api_key_env // \"\"" "$CPM_CONFIG_FILE")
+
+  echo ""
+  echo "Editing '$cur_name' (press Enter to keep current value):"
+  echo ""
+
+  local new_name new_url new_type new_key
+
+  printf "  Name [%s]: " "$cur_name"
+  read -r new_name
+  new_name="${new_name:-$cur_name}"
+
+  printf "  Base URL [%s]: " "$cur_url"
+  read -r new_url
+  new_url="${new_url:-$cur_url}"
+
+  printf "  Provider type [%s]: " "$cur_type"
+  read -r new_type
+  new_type="${new_type:-$cur_type}"
+
+  printf "  API key env var [%s]: " "$cur_key"
+  read -r new_key
+  new_key="${new_key:-$cur_key}"
+
+  jq --argjson i "$pidx" --arg n "$new_name" --arg u "$new_url" --arg t "$new_type" --arg k "$new_key" \
+    '.providers[$i].name = $n | .providers[$i].base_url = $u | .providers[$i].provider_type = $t | .providers[$i].api_key_env = $k' \
+    "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+
+  echo ""
+  echo "✓ Updated provider '$new_name'"
+}
+
+_cpm_update_model() {
+  local provider_count="$1"
+  local pn model_count mi mid mchoice
+  local total=0 pi=0 idx=0 target_pi=0 target_mi=0
+
+  # Build flat list of all models
+  echo ""
+  echo "Pick a model to update:"
+  while [ "$pi" -lt "$provider_count" ]; do
+    pn=$(jq -r ".providers[$pi].name" "$CPM_CONFIG_FILE")
+    model_count=$(jq ".providers[$pi].models | length" "$CPM_CONFIG_FILE")
+    mi=0
+    while [ "$mi" -lt "$model_count" ]; do
+      total=$((total + 1))
+      mid=$(jq -r ".providers[$pi].models[$mi].id" "$CPM_CONFIG_FILE")
+      echo "  $total) $pn > $mid"
+      mi=$((mi + 1))
+    done
+    pi=$((pi + 1))
+  done
+
+  if [ "$total" -eq 0 ]; then
+    echo "  No models configured."
+    return 0
+  fi
+  echo ""
+
+  while true; do
+    printf "Pick (1-%d): " "$total"
+    read -r mchoice
+    case "$mchoice" in
+      ''|*[!0-9]*) echo "Invalid choice." >&2; continue ;;
+    esac
+    if [ "$mchoice" -ge 1 ] && [ "$mchoice" -le "$total" ]; then break; fi
+    echo "Invalid choice." >&2
+  done
+
+  # Map choice to provider/model indices
+  pi=0
+  while [ "$pi" -lt "$provider_count" ]; do
+    model_count=$(jq ".providers[$pi].models | length" "$CPM_CONFIG_FILE")
+    mi=0
+    while [ "$mi" -lt "$model_count" ]; do
+      idx=$((idx + 1))
+      if [ "$idx" -eq "$mchoice" ]; then
+        target_pi=$pi
+        target_mi=$mi
+      fi
+      mi=$((mi + 1))
+    done
+    pi=$((pi + 1))
+  done
+
+  local cur_id cur_prompt cur_output cur_pn
+  cur_pn=$(jq -r ".providers[$target_pi].name" "$CPM_CONFIG_FILE")
+  cur_id=$(jq -r ".providers[$target_pi].models[$target_mi].id" "$CPM_CONFIG_FILE")
+  cur_prompt=$(jq -r ".providers[$target_pi].models[$target_mi].max_prompt_tokens // 128000" "$CPM_CONFIG_FILE")
+  cur_output=$(jq -r ".providers[$target_pi].models[$target_mi].max_output_tokens // 16000" "$CPM_CONFIG_FILE")
+
+  echo ""
+  echo "Editing '$cur_pn > $cur_id' (press Enter to keep current value):"
+  echo ""
+
+  local new_id new_prompt new_output
+
+  printf "  Model ID [%s]: " "$cur_id"
+  read -r new_id
+  new_id="${new_id:-$cur_id}"
+
+  printf "  Max prompt tokens [%s]: " "$cur_prompt"
+  read -r new_prompt
+  new_prompt="${new_prompt:-$cur_prompt}"
+
+  printf "  Max output tokens [%s]: " "$cur_output"
+  read -r new_output
+  new_output="${new_output:-$cur_output}"
+
+  jq --argjson pi "$target_pi" --argjson mi "$target_mi" \
+    --arg id "$new_id" --argjson mp "$new_prompt" --argjson mo "$new_output" \
+    '.providers[$pi].models[$mi].id = $id | .providers[$pi].models[$mi].max_prompt_tokens = $mp | .providers[$pi].models[$mi].max_output_tokens = $mo' \
+    "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+
+  echo ""
+  echo "✓ Updated $cur_pn > $new_id"
+}
+
 _cpm_help() {
   cat <<'EOF'
 Usage: cpm [command]
@@ -149,6 +546,9 @@ Commands:
   (none)    Interactive model picker
   status    Show the currently active model
   list      List all configured models
+  add       Add a new provider or model
+  remove    Remove a provider or model
+  update    Edit a provider or model's settings
   keys      Show / set API keys for all providers
   config    Get/set config values (e.g. cpm config launch yolo)
   edit      Open models.json in $EDITOR

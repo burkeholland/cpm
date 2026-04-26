@@ -20,7 +20,7 @@ function _cpm_join_path {
 $CpmConfigDir = if ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "cpm" } else { _cpm_join_path $HOME ".config" "cpm" }
 $CpmConfigFile = Join-Path $CpmConfigDir "models.json"
 $CpmPsFile = Join-Path $CpmConfigDir "cpm.ps1"
-$ScriptPath = if ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path } else { $PSCommandPath }
+$ScriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.PSCommandPath }
 $ScriptDir = if ($ScriptPath) { Split-Path -Parent $ScriptPath } else { $null }
 $RemoteBase = "https://raw.githubusercontent.com/burkeholland/cpm/main"
 

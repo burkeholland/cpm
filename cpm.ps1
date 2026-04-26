@@ -1,7 +1,22 @@
 # cpm.ps1 — Copilot Provider Model switcher for PowerShell
 # Dot-source this file:  . ./cpm.ps1  (do NOT run it directly)
 
-$script:CpmConfigDir = if ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "cpm" } else { Join-Path $HOME ".config" "cpm" }
+function _cpm_join_path {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$Path,
+        [Parameter(Mandatory = $true, Position = 1, ValueFromRemainingArguments = $true)]
+        [string[]]$ChildPath
+    )
+
+    $result = $Path
+    foreach ($child in $ChildPath) {
+        $result = Join-Path $result $child
+    }
+    return $result
+}
+
+$script:CpmConfigDir = if ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "cpm" } else { _cpm_join_path $HOME ".config" "cpm" }
 $script:CpmConfigFile = Join-Path $script:CpmConfigDir "models.json"
 
 function cpm {
@@ -625,15 +640,15 @@ function _cpm_import {
     $searchPaths = @()
 
     if ($IsWindows -or $env:OS -match "Windows") {
-        $searchPaths += Join-Path $env:APPDATA "Code - Insiders" "User" "chatLanguageModels.json"
-        $searchPaths += Join-Path $env:APPDATA "Code" "User" "chatLanguageModels.json"
+        $searchPaths += _cpm_join_path $env:APPDATA "Code - Insiders" "User" "chatLanguageModels.json"
+        $searchPaths += _cpm_join_path $env:APPDATA "Code" "User" "chatLanguageModels.json"
     } elseif ($IsMacOS) {
-        $searchPaths += Join-Path $HOME "Library" "Application Support" "Code - Insiders" "User" "chatLanguageModels.json"
-        $searchPaths += Join-Path $HOME "Library" "Application Support" "Code" "User" "chatLanguageModels.json"
+        $searchPaths += _cpm_join_path $HOME "Library" "Application Support" "Code - Insiders" "User" "chatLanguageModels.json"
+        $searchPaths += _cpm_join_path $HOME "Library" "Application Support" "Code" "User" "chatLanguageModels.json"
     } else {
         $configBase = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME ".config" }
-        $searchPaths += Join-Path $configBase "Code - Insiders" "User" "chatLanguageModels.json"
-        $searchPaths += Join-Path $configBase "Code" "User" "chatLanguageModels.json"
+        $searchPaths += _cpm_join_path $configBase "Code - Insiders" "User" "chatLanguageModels.json"
+        $searchPaths += _cpm_join_path $configBase "Code" "User" "chatLanguageModels.json"
     }
 
     $vscodeFile = $null

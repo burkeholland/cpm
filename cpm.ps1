@@ -469,12 +469,8 @@ function _cpm_pick {
         }
     }
 
-    if ($entries.Count -eq 0) {
-        Write-Error "No models configured. Run 'cpm edit' to add some."
-        return
-    }
-
-    $total = $entries.Count + 1
+    # total = built-in + BYOK models + "Add a new model"
+    $total = $entries.Count + 2
 
     Write-Host "Pick a model:"
     Write-Host ""
@@ -482,6 +478,7 @@ function _cpm_pick {
     for ($i = 0; $i -lt $entries.Count; $i++) {
         Write-Host "  $($i + 2)) $($entries[$i].Label)"
     }
+    Write-Host "  $total) Add a new model..."
     Write-Host ""
 
     do {
@@ -498,6 +495,12 @@ function _cpm_pick {
         Write-Host "[ok] Switched to Copilot (built-in)"
         Write-Host ""
         _cpm_launch
+        return
+    }
+
+    # Last option = add a new model
+    if ($choice -eq $total) {
+        _cpm_add
         return
     }
 

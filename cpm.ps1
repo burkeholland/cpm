@@ -1,4 +1,4 @@
-# cpm.ps1 — Copilot Provider Model switcher for PowerShell
+# cpm.ps1 -- Copilot Provider Model switcher for PowerShell
 # Dot-source this file:  . ./cpm.ps1  (do NOT run it directly)
 
 function _cpm_join_path {
@@ -50,7 +50,7 @@ function cpm {
     }
 }
 
-# ── subcommands ──────────────────────────────────────────────────────────
+# -- subcommands ----------------------------------------------------------
 
 function _cpm_status {
     if (-not $env:COPILOT_MODEL) {
@@ -94,7 +94,7 @@ function _cpm_clear {
     Write-Host "Cleared all Copilot provider env vars."
 }
 
-# ── add provider/model wizard ────────────────────────────────────────────
+# -- add provider/model wizard --------------------------------------------
 
 function _cpm_add {
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
@@ -151,7 +151,7 @@ function _cpm_add {
         $config.providers += $newProvider
         $providerIdx = $config.providers.Count - 1
         Write-Host ""
-        Write-Host "  ✓ Provider '$pname' added"
+        Write-Host "  [ok] Provider '$pname' added"
 
         if ($pkey) {
             $existing = [System.Environment]::GetEnvironmentVariable($pkey)
@@ -161,7 +161,7 @@ function _cpm_add {
                 if ($keyVal) {
                     [System.Environment]::SetEnvironmentVariable($pkey, $keyVal, "Process")
                     _cpm_persist_key_ps $pkey $keyVal
-                    Write-Host "  ✓ Key set and saved to profile."
+                    Write-Host "  [ok] Key set and saved to profile."
                 }
             }
         }
@@ -190,10 +190,10 @@ function _cpm_add {
 
     $provName = $config.providers[$providerIdx].name
     Write-Host ""
-    Write-Host "✓ Added $provName > $mid"
+    Write-Host "[ok] Added $provName > $mid"
 }
 
-# ── remove provider/model ────────────────────────────────────────────────
+# -- remove provider/model ------------------------------------------------
 
 function _cpm_remove {
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
@@ -210,9 +210,9 @@ function _cpm_remove {
     $items = @()
     foreach ($provider in $config.providers) {
         $pi = [array]::IndexOf($config.providers, $provider)
-        $items += [PSCustomObject]@{ Type = "provider"; PI = $pi; MI = -1; Label = "✗ Remove provider '$($provider.name)' (and all its models)" }
+        $items += [PSCustomObject]@{ Type = "provider"; PI = $pi; MI = -1; Label = "[x] Remove provider '$($provider.name)' (and all its models)" }
         for ($mi = 0; $mi -lt $provider.models.Count; $mi++) {
-            $items += [PSCustomObject]@{ Type = "model"; PI = $pi; MI = $mi; Label = "  ✗ Remove model '$($provider.models[$mi].id)' from $($provider.name)" }
+            $items += [PSCustomObject]@{ Type = "model"; PI = $pi; MI = $mi; Label = "  [x] Remove model '$($provider.models[$mi].id)' from $($provider.name)" }
         }
     }
 
@@ -236,7 +236,7 @@ function _cpm_remove {
         $keyEnv = $config.providers[$selected.PI].api_key_env
         $config.providers = @($config.providers | Where-Object { $_ -ne $config.providers[$selected.PI] })
         $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
-        Write-Host "✓ Removed provider '$name'"
+        Write-Host "[ok] Removed provider '$name'"
 
         # Offer to remove API key from profile
         if ($keyEnv) {
@@ -248,7 +248,7 @@ function _cpm_remove {
                     $content = Get-Content $profilePath | Where-Object { $_ -notmatch "^\`$env:$keyEnv\s*=" }
                     $content | Set-Content $profilePath
                     Remove-Item "Env:$keyEnv" -ErrorAction SilentlyContinue
-                    Write-Host "  ✓ Removed $keyEnv from profile"
+                    Write-Host "  [ok] Removed $keyEnv from profile"
                 }
             }
         }
@@ -257,11 +257,11 @@ function _cpm_remove {
         $mn = $config.providers[$selected.PI].models[$selected.MI].id
         $config.providers[$selected.PI].models = @($config.providers[$selected.PI].models | Where-Object { $_ -ne $config.providers[$selected.PI].models[$selected.MI] })
         $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
-        Write-Host "✓ Removed model '$mn' from $pn"
+        Write-Host "[ok] Removed model '$mn' from $pn"
     }
 }
 
-# ── update provider/model ────────────────────────────────────────────────
+# -- update provider/model ------------------------------------------------
 
 function _cpm_update {
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
@@ -323,7 +323,7 @@ function _cpm_update {
         $p | Add-Member -NotePropertyName "api_key_env" -NotePropertyValue $newKey -Force
         $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
         Write-Host ""
-        Write-Host "✓ Updated provider '$newName'"
+        Write-Host "[ok] Updated provider '$newName'"
     } else {
         # Update model
         $items = @()
@@ -374,7 +374,7 @@ function _cpm_update {
         $m | Add-Member -NotePropertyName "max_output_tokens" -NotePropertyValue ([int]$newOutput) -Force
         $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
         Write-Host ""
-        Write-Host "✓ Updated $pn > $newId"
+        Write-Host "[ok] Updated $pn > $newId"
     }
 }
 
@@ -398,7 +398,7 @@ Commands:
 "@
 }
 
-# ── config get/set ───────────────────────────────────────────────────────
+# -- config get/set -------------------------------------------------------
 
 function _cpm_config {
     param(
@@ -430,7 +430,7 @@ function _cpm_config {
             } else {
                 $config | Add-Member -NotePropertyName "launch" -NotePropertyValue $Value -Force
                 $config | ConvertTo-Json -Depth 10 | Set-Content $script:CpmConfigFile
-                if (-not $Value) { Write-Host "✓ Auto-launch disabled" } else { Write-Host "✓ launch set to: $Value" }
+                if (-not $Value) { Write-Host "[ok] Auto-launch disabled" } else { Write-Host "[ok] launch set to: $Value" }
             }
         }
         default {
@@ -439,7 +439,7 @@ function _cpm_config {
     }
 }
 
-# ── launch copilot (or configured command) ───────────────────────────────
+# -- launch copilot (or configured command) -------------------------------
 
 function _cpm_launch {
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
@@ -449,7 +449,7 @@ function _cpm_launch {
     }
 }
 
-# ── interactive picker ───────────────────────────────────────────────────
+# -- interactive picker ---------------------------------------------------
 
 function _cpm_pick {
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
@@ -495,7 +495,7 @@ function _cpm_pick {
     if ($choice -eq 1) {
         _cpm_clear
         Write-Host ""
-        Write-Host "✓ Switched to Copilot (built-in)"
+        Write-Host "[ok] Switched to Copilot (built-in)"
         Write-Host ""
         _cpm_launch
         return
@@ -514,15 +514,15 @@ function _cpm_pick {
             $env:COPILOT_PROVIDER_API_KEY = $resolvedKey
         } else {
             Write-Host ""
-            Write-Host "⚠ `$$($selected.ApiKeyEnv) is not set."
+            Write-Host "[!] `$$($selected.ApiKeyEnv) is not set."
             $keyInput = Read-Host "  Paste your API key now (or press Enter to skip)"
             if ($keyInput) {
                 [System.Environment]::SetEnvironmentVariable($selected.ApiKeyEnv, $keyInput, "Process")
                 $env:COPILOT_PROVIDER_API_KEY = $keyInput
                 _cpm_persist_key_ps $selected.ApiKeyEnv $keyInput
-                Write-Host "  ✓ Key set and saved to PowerShell profile."
+                Write-Host "  [ok] Key set and saved to PowerShell profile."
             } else {
-                Write-Host "  Skipped — set `$$($selected.ApiKeyEnv) before using Copilot."
+                Write-Host "  Skipped -- set `$$($selected.ApiKeyEnv) before using Copilot."
                 Remove-Item Env:COPILOT_PROVIDER_API_KEY -ErrorAction SilentlyContinue
             }
         }
@@ -543,12 +543,12 @@ function _cpm_pick {
     }
 
     Write-Host ""
-    Write-Host "✓ Switched to $($selected.Label)"
+    Write-Host "[ok] Switched to $($selected.Label)"
     Write-Host ""
     _cpm_launch
 }
 
-# ── key management ───────────────────────────────────────────────────────
+# -- key management -------------------------------------------------------
 
 function _cpm_keys {
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
@@ -569,9 +569,9 @@ function _cpm_keys {
             $val = [System.Environment]::GetEnvironmentVariable($envName)
             if ($val) {
                 $last4 = $val.Substring([Math]::Max(0, $val.Length - 4))
-                Write-Host "  $($provider.name): ✓ `$$envName is set (****$last4)"
+                Write-Host "  $($provider.name): [ok] `$$envName is set (****$last4)"
             } else {
-                Write-Host "  $($provider.name): ✗ `$$envName is NOT set"
+                Write-Host "  $($provider.name): [x] `$$envName is NOT set"
             }
         }
     }
@@ -601,7 +601,7 @@ function _cpm_keys {
                     if ($keyInput) {
                         [System.Environment]::SetEnvironmentVariable($envName, $keyInput, "Process")
                         _cpm_persist_key_ps $envName $keyInput
-                        Write-Host "  ✓ `$$envName set and saved."
+                        Write-Host "  [ok] `$$envName set and saved."
                     } else {
                         Write-Host "  Skipped."
                     }
@@ -634,7 +634,7 @@ function _cpm_persist_key_ps {
     Add-Content $profilePath "`n`$env:$EnvName = `"$KeyValue`""
 }
 
-# ── VS Code import ───────────────────────────────────────────────────────
+# -- VS Code import -------------------------------------------------------
 
 function _cpm_import {
     $searchPaths = @()

@@ -1,4 +1,4 @@
-# install.ps1 — cpm installer for PowerShell
+# install.ps1 -- cpm installer for PowerShell
 
 $ErrorActionPreference = "Stop"
 
@@ -27,10 +27,10 @@ $RemoteBase = "https://raw.githubusercontent.com/burkeholland/cpm/main"
 Write-Host "Installing cpm..."
 Write-Host ""
 
-# ── create config dir ────────────────────────────────────────────────
+# -- create config dir ------------------------------------------------
 New-Item -ItemType Directory -Path $CpmConfigDir -Force | Out-Null
 
-# ── copy or download PowerShell function ─────────────────────────────
+# -- copy or download PowerShell function -----------------------------
 $localSource = if ($ScriptDir) { Join-Path $ScriptDir "cpm.ps1" } else { $null }
 
 if ($localSource -and (Test-Path $localSource)) {
@@ -39,21 +39,21 @@ if ($localSource -and (Test-Path $localSource)) {
     Write-Host "Downloading cpm.ps1 from GitHub..."
     Invoke-RestMethod "$RemoteBase/cpm.ps1" -OutFile $CpmPsFile
 }
-Write-Host "✓ Installed PowerShell function to $CpmPsFile"
+Write-Host "[ok] Installed PowerShell function to $CpmPsFile"
 
-# ── create default config if missing ─────────────────────────────────
+# -- create default config if missing ---------------------------------
 if (-not (Test-Path $CpmConfigFile)) {
     @'
 {
   "providers": []
 }
 '@ | Set-Content $CpmConfigFile -Encoding UTF8
-    Write-Host "✓ Created default config at $CpmConfigFile"
+    Write-Host "[ok] Created default config at $CpmConfigFile"
 } else {
-    Write-Host "✓ Config already exists at $CpmConfigFile"
+    Write-Host "[ok] Config already exists at $CpmConfigFile"
 }
 
-# ── offer VS Code import ────────────────────────────────────────────
+# -- offer VS Code import --------------------------------------------
 $searchPaths = @()
 if ($IsWindows -or $env:OS -match "Windows") {
     $searchPaths += _cpm_join_path $env:APPDATA "Code - Insiders" "User" "chatLanguageModels.json"
@@ -85,7 +85,7 @@ if ($vscodeFile) {
     }
 }
 
-# ── patch PowerShell profile ────────────────────────────────────────
+# -- patch PowerShell profile ----------------------------------------
 $sourceLine = ". `"$CpmPsFile`""
 
 $profilePath = $PROFILE.CurrentUserCurrentHost
@@ -102,9 +102,9 @@ if (-not (Test-Path $profilePath)) {
 $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
 if (-not $profileContent -or -not $profileContent.Contains($CpmPsFile)) {
     Add-Content $profilePath "`n# cpm - Copilot Provider Model switcher`n$sourceLine"
-    Write-Host "✓ Added source line to $profilePath"
+    Write-Host "[ok] Added source line to $profilePath"
 } else {
-    Write-Host "✓ Already sourced in $profilePath"
+    Write-Host "[ok] Already sourced in $profilePath"
 }
 
 Write-Host ""

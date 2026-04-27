@@ -34,6 +34,8 @@ cpm() {
     config)  shift; _cpm_config "$@" ;;
     uninstall) _cpm_uninstall ;;
     help)    _cpm_help ;;
+    --help)  _cpm_help ;;
+    -h)      _cpm_help ;;
     "")      _cpm_pick ;;
     *)
       echo "cpm: unknown command '$sub'" >&2

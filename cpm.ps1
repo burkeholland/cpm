@@ -43,6 +43,8 @@ function cpm {
         "config"  { _cpm_config @args }
         "uninstall" { _cpm_uninstall }
         "help"    { _cpm_help }
+        "--help"  { _cpm_help }
+        "-h"      { _cpm_help }
         ""        { _cpm_pick }
         default {
             Write-Error "cpm: unknown command '$Command'"

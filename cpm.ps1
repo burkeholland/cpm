@@ -41,6 +41,7 @@ function cpm {
         "clear"   { _cpm_clear }
         "keys"    { _cpm_keys }
         "config"  { _cpm_config @args }
+        "uninstall" { _cpm_uninstall }
         "help"    { _cpm_help }
         ""        { _cpm_pick }
         default {
@@ -394,8 +395,43 @@ Commands:
   edit      Open models.json in `$EDITOR
   import    Import models from VS Code chatLanguageModels.json
   clear     Unset all Copilot provider env vars
+  uninstall Remove cpm config, script, and profile entries
   help      Show this help
 "@
+}
+
+function _cpm_uninstall {
+    $answer = Read-Host "This will remove cpm config and scripts. Continue? [y/N]"
+    if ($answer -ne 'y') {
+        Write-Host "Cancelled."
+        return
+    }
+
+    # Remove source line from all PowerShell profiles
+    $profiles = @(
+        $PROFILE.CurrentUserCurrentHost
+        $PROFILE.CurrentUserAllHosts
+    )
+    foreach ($p in $profiles) {
+        if (Test-Path $p) {
+            $lines = Get-Content $p
+            $filtered = $lines | Where-Object { $_ -notmatch 'cpm' }
+            $filtered | Set-Content $p
+            Write-Host "[ok] Cleaned $p"
+        }
+    }
+
+    # Remove config directory
+    if (Test-Path $script:CpmConfigDir) {
+        Remove-Item $script:CpmConfigDir -Recurse -Force
+        Write-Host "[ok] Removed $($script:CpmConfigDir)"
+    }
+
+    # Clear env vars
+    _cpm_clear
+
+    Write-Host ""
+    Write-Host "cpm has been uninstalled. Restart your shell to complete."
 }
 
 # -- config get/set -------------------------------------------------------

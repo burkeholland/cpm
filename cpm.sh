@@ -32,6 +32,7 @@ cpm() {
     clear)   _cpm_clear ;;
     keys)    _cpm_keys ;;
     config)  shift; _cpm_config "$@" ;;
+    uninstall) _cpm_uninstall ;;
     help)    _cpm_help ;;
     "")      _cpm_pick ;;
     *)
@@ -568,8 +569,39 @@ Commands:
   edit      Open models.json in $EDITOR
   import    Import models from VS Code chatLanguageModels.json
   clear     Unset all Copilot provider env vars
+  uninstall Remove cpm config, script, and profile entries
   help      Show this help
 EOF
+}
+
+_cpm_uninstall() {
+  printf "This will remove cpm config and scripts. Continue? [y/N] "
+  read -r answer
+  if [ "$answer" != "y" ]; then
+    echo "Cancelled."
+    return 0
+  fi
+
+  # Remove source lines from shell rc files
+  local rc_files=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile")
+  for rc in "${rc_files[@]}"; do
+    if [ -f "$rc" ] && grep -qF "cpm" "$rc"; then
+      grep -vF "cpm" "$rc" > "${rc}.tmp" && mv "${rc}.tmp" "$rc"
+      echo "[ok] Cleaned $rc"
+    fi
+  done
+
+  # Remove config directory
+  if [ -d "$CPM_CONFIG_DIR" ]; then
+    rm -rf "$CPM_CONFIG_DIR"
+    echo "[ok] Removed $CPM_CONFIG_DIR"
+  fi
+
+  # Clear env vars
+  _cpm_clear
+
+  echo ""
+  echo "cpm has been uninstalled. Restart your shell to complete."
 }
 
 # ── key management ──────────────────────────────────────────────────────

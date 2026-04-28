@@ -858,7 +858,7 @@ _cpm_pick() {
   echo ""
   _cpm_launch
   if [ "$_global" -eq 0 ]; then
-    _cpm_clear
+    _cpm_clear >/dev/null
   fi
 }
 

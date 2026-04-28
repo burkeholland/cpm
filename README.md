@@ -61,6 +61,7 @@ sudo dnf install jq
 | Command | Description |
 |---|---|
 | `cpm` | Interactive model picker |
+| `cpm --global` / `cpm -Global` | Interactive model picker — keeps `COPILOT_*` vars set in the shell after launch |
 | `cpm status` | Show the currently active model and env vars |
 | `cpm list` | List all configured models |
 | `cpm keys` | Show API key status and set missing keys |
@@ -171,7 +172,7 @@ This reads `chatLanguageModels.json`, skips GitHub-hosted models, and maps each 
 
 ## Environment Variables Set
 
-When you pick a model, `cpm` exports these into your current shell:
+When you pick a model, `cpm` sets these variables for the duration of the launched session:
 
 | Variable | Source |
 |---|---|
@@ -182,11 +183,15 @@ When you pick a model, `cpm` exports these into your current shell:
 | `COPILOT_PROVIDER_MAX_PROMPT_TOKENS` | `models[].max_prompt_tokens` (if set) |
 | `COPILOT_PROVIDER_MAX_OUTPUT_TOKENS` | `models[].max_output_tokens` (if set) |
 
-Run `cpm clear` to unset all of them and return to the default GitHub-hosted model.
+By default, these variables are automatically unset when the launched session exits, so they do not linger in your terminal. Use `cpm --global` (Bash/Zsh) or `cpm -Global` (PowerShell) to keep them set in the current shell after launch.
+
+Run `cpm clear` to unset all of them at any time.
 
 ## How It Works
 
 `cpm` is a **shell function** (not a standalone script) because it needs to set environment variables in your current shell session. That's why it's sourced rather than executed.
+
+By default, `cpm` unsets all `COPILOT_*` environment variables after the launched session exits, keeping your terminal clean. Pass `--global` (Bash/Zsh) or `-Global` (PowerShell) to retain them in the current shell.
 
 ## License
 

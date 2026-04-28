@@ -20,6 +20,13 @@ cpm() {
   fi
 
   local sub="${1:-}"
+  local _global=0
+
+  if [ "$sub" = "--global" ]; then
+    _global=1
+    shift
+    sub="${1:-}"
+  fi
 
   case "$sub" in
     status)  _cpm_status ;;
@@ -36,7 +43,7 @@ cpm() {
     help)    _cpm_help ;;
     --help)  _cpm_help ;;
     -h)      _cpm_help ;;
-    "")      _cpm_pick ;;
+    "")      _cpm_pick "$_global" ;;
     *)
       echo "cpm: unknown command '$sub'" >&2
       _cpm_help
@@ -557,7 +564,11 @@ _cpm_update_model() {
 
 _cpm_help() {
   cat <<'EOF'
-Usage: cpm [command]
+Usage: cpm [--global] [command]
+
+Flags:
+  --global  Keep COPILOT_* env vars set in the current shell after launch
+            (by default they are only set for the duration of the launched session)
 
 Commands:
   (none)    Interactive model picker
@@ -719,6 +730,8 @@ _cpm_remove_key() {
 # ── interactive picker ──────────────────────────────────────────────────
 
 _cpm_pick() {
+  local _global="${1:-0}"
+
   # Get a flat JSON array of all model entries
   local all_json
   all_json=$(jq -c '
@@ -838,12 +851,16 @@ _cpm_pick() {
     unset COPILOT_PROVIDER_MAX_OUTPUT_TOKENS
   fi
 
-  local label
+  local label launch_cmd
   label=$(printf '%s' "$selected" | jq -r '.label')
+  launch_cmd=$(jq -r '.launch // empty' "$CPM_CONFIG_FILE")
   echo ""
   echo "✓ Switched to $label"
   echo ""
   _cpm_launch
+  if [ "$_global" -eq 0 ] && [ -n "$launch_cmd" ]; then
+    _cpm_clear >/dev/null
+  fi
 }
 
 # ── VS Code import ──────────────────────────────────────────────────────

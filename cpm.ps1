@@ -22,7 +22,8 @@ $script:CpmConfigFile = Join-Path $script:CpmConfigDir "models.json"
 function cpm {
     param(
         [Parameter(Position = 0)]
-        [string]$Command = ""
+        [string]$Command = "",
+        [switch]$Global
     )
 
     if (-not (Test-Path $script:CpmConfigFile)) {
@@ -45,7 +46,7 @@ function cpm {
         "help"    { _cpm_help }
         "--help"  { _cpm_help }
         "-h"      { _cpm_help }
-        ""        { _cpm_pick }
+        ""        { _cpm_pick -Global:$Global }
         default {
             Write-Error "cpm: unknown command '$Command'"
             _cpm_help
@@ -88,13 +89,16 @@ function _cpm_edit {
 }
 
 function _cpm_clear {
+    param([switch]$Quiet)
     Remove-Item Env:COPILOT_PROVIDER_BASE_URL -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_TYPE -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_MODEL -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS -ErrorAction SilentlyContinue
-    Write-Host "Cleared all Copilot provider env vars."
+    if (-not $Quiet) {
+        Write-Host "Cleared all Copilot provider env vars."
+    }
 }
 
 # -- add provider/model wizard --------------------------------------------
@@ -383,7 +387,11 @@ function _cpm_update {
 
 function _cpm_help {
     Write-Host @"
-Usage: cpm [command]
+Usage: cpm [-Global] [command]
+
+Flags:
+  -Global   Keep COPILOT_* env vars set in the current shell after launch
+            (by default they are only set for the duration of the launched session)
 
 Commands:
   (none)    Interactive model picker
@@ -490,6 +498,8 @@ function _cpm_launch {
 # -- interactive picker ---------------------------------------------------
 
 function _cpm_pick {
+    param([switch]$Global)
+
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
     $entries = @()
 
@@ -586,7 +596,13 @@ function _cpm_pick {
     Write-Host ""
     Write-Host "[ok] Switched to $($selected.Label)"
     Write-Host ""
+
+    $launchEnabled = -not ($null -eq $config.launch -or [string]::IsNullOrWhiteSpace([string]$config.launch))
+
     _cpm_launch
+    if (-not $Global -and $launchEnabled) {
+        _cpm_clear -Quiet
+    }
 }
 
 # -- key management -------------------------------------------------------

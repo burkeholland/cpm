@@ -851,13 +851,14 @@ _cpm_pick() {
     unset COPILOT_PROVIDER_MAX_OUTPUT_TOKENS
   fi
 
-  local label
+  local label launch_cmd
   label=$(printf '%s' "$selected" | jq -r '.label')
+  launch_cmd=$(jq -r '.launch // empty' "$CPM_CONFIG_FILE")
   echo ""
   echo "✓ Switched to $label"
   echo ""
   _cpm_launch
-  if [ "$_global" -eq 0 ]; then
+  if [ "$_global" -eq 0 ] && [ -n "$launch_cmd" ]; then
     _cpm_clear >/dev/null
   fi
 }

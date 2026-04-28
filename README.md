@@ -61,7 +61,7 @@ sudo dnf install jq
 | Command | Description |
 |---|---|
 | `cpm` | Interactive model picker |
-| `cpm --global` | Interactive model picker — keeps `COPILOT_*` vars set in the shell after launch |
+| `cpm --global` / `cpm -Global` | Interactive model picker — keeps `COPILOT_*` vars set in the shell after launch |
 | `cpm status` | Show the currently active model and env vars |
 | `cpm list` | List all configured models |
 | `cpm keys` | Show API key status and set missing keys |

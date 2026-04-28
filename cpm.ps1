@@ -597,11 +597,7 @@ function _cpm_pick {
     Write-Host "[ok] Switched to $($selected.Label)"
     Write-Host ""
 
-    $launchEnabled = $true
-    $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
-    if ($null -eq $config.launch -or [string]::IsNullOrWhiteSpace([string]$config.launch)) {
-        $launchEnabled = $false
-    }
+    $launchEnabled = -not ($null -eq $config.launch -or [string]::IsNullOrWhiteSpace([string]$config.launch))
 
     _cpm_launch
     if (-not $Global -and $launchEnabled) {

@@ -89,13 +89,16 @@ function _cpm_edit {
 }
 
 function _cpm_clear {
+    param([switch]$Quiet)
     Remove-Item Env:COPILOT_PROVIDER_BASE_URL -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_TYPE -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_MODEL -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS -ErrorAction SilentlyContinue
-    Write-Host "Cleared all Copilot provider env vars."
+    if (-not $Quiet) {
+        Write-Host "Cleared all Copilot provider env vars."
+    }
 }
 
 # -- add provider/model wizard --------------------------------------------
@@ -602,7 +605,7 @@ function _cpm_pick {
 
     _cpm_launch
     if (-not $Global -and $launchEnabled) {
-        _cpm_clear
+        _cpm_clear -Quiet
     }
 }
 

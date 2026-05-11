@@ -61,6 +61,7 @@ sudo dnf install jq
 | Command | Description |
 |---|---|
 | `cpm` | Interactive model picker |
+| `cpm --global` | Keep selected Copilot provider env vars in the current shell |
 | `cpm status` | Show the currently active model and env vars |
 | `cpm list` | List all configured models |
 | `cpm keys` | Show API key status and set missing keys |
@@ -185,7 +186,7 @@ This reads `chatLanguageModels.json`, skips GitHub-hosted models, and maps each 
 
 ## Environment Variables Set
 
-When you pick a model, `cpm` exports these into your current shell:
+When you pick a model, `cpm` sets these only for the launched Copilot session:
 
 | Variable | Source |
 |---|---|
@@ -196,11 +197,11 @@ When you pick a model, `cpm` exports these into your current shell:
 | `COPILOT_PROVIDER_MAX_PROMPT_TOKENS` | `models[].max_prompt_tokens` (if set) |
 | `COPILOT_PROVIDER_MAX_OUTPUT_TOKENS` | `models[].max_output_tokens` (if set) |
 
-Run `cpm clear` to unset all of them and return to the default GitHub-hosted model.
+Run `cpm --global` (`cpm -Global` in PowerShell) to keep them in your current shell instead. Run `cpm clear` to unset global provider variables and return to the default GitHub-hosted model.
 
 ## How It Works
 
-`cpm` is a **shell function** (not a standalone script) because it needs to set environment variables in your current shell session. That's why it's sourced rather than executed.
+`cpm` is a **shell function** (not a standalone script) so it can optionally set environment variables in your current shell session when you use `--global`. By default, provider variables are scoped to the launched Copilot command and restored afterward.
 
 ## License
 

@@ -21,9 +21,22 @@ $script:CpmConfigFile = Join-Path $script:CpmConfigDir "models.json"
 
 function cpm {
     param(
+        [Alias("g")]
+        [switch]$Global,
         [Parameter(Position = 0)]
         [string]$Command = ""
     )
+
+    $remainingArgs = @($args)
+    if ($Command -eq "--global") {
+        $Global = $true
+        if ($remainingArgs.Count -gt 0) {
+            $Command = $remainingArgs[0]
+            $remainingArgs = @($remainingArgs | Select-Object -Skip 1)
+        } else {
+            $Command = ""
+        }
+    }
 
     if (-not (Test-Path $script:CpmConfigFile)) {
         Write-Error "cpm: config not found at $($script:CpmConfigFile)`nRun the installer or create it manually."
@@ -40,12 +53,12 @@ function cpm {
         "import"  { _cpm_import }
         "clear"   { _cpm_clear }
         "keys"    { _cpm_keys }
-        "config"  { _cpm_config @args }
+        "config"  { _cpm_config @remainingArgs }
         "uninstall" { _cpm_uninstall }
         "help"    { _cpm_help }
         "--help"  { _cpm_help }
         "-h"      { _cpm_help }
-        ""        { _cpm_pick }
+        ""        { _cpm_pick -Global:$Global }
         default {
             Write-Error "cpm: unknown command '$Command'"
             _cpm_help
@@ -88,13 +101,17 @@ function _cpm_edit {
 }
 
 function _cpm_clear {
+    _cpm_unset_provider_env
+    Write-Host "Cleared all Copilot provider env vars."
+}
+
+function _cpm_unset_provider_env {
     Remove-Item Env:COPILOT_PROVIDER_BASE_URL -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_TYPE -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_MODEL -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS -ErrorAction SilentlyContinue
     Remove-Item Env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS -ErrorAction SilentlyContinue
-    Write-Host "Cleared all Copilot provider env vars."
 }
 
 # -- provider type picker -------------------------------------------------
@@ -418,7 +435,11 @@ function _cpm_update {
 
 function _cpm_help {
     Write-Host @"
-Usage: cpm [command]
+Usage: cpm [--global|-g] [command]
+
+Options:
+  --global  Keep selected Copilot provider env vars in the current shell
+  -g        Alias for --global
 
 Commands:
   (none)    Interactive model picker
@@ -522,9 +543,113 @@ function _cpm_launch {
     }
 }
 
+function _cpm_invoke_with_copilot_env {
+    param(
+        [hashtable]$Values = @{}
+    )
+
+    $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
+    $cmd = if ($null -ne $config.launch) { $config.launch } else { "copilot" }
+    if (-not $cmd) {
+        return
+    }
+
+    $names = @(
+        "COPILOT_PROVIDER_BASE_URL",
+        "COPILOT_PROVIDER_TYPE",
+        "COPILOT_PROVIDER_API_KEY",
+        "COPILOT_MODEL",
+        "COPILOT_PROVIDER_MAX_PROMPT_TOKENS",
+        "COPILOT_PROVIDER_MAX_OUTPUT_TOKENS"
+    )
+    $previous = @{}
+    foreach ($name in $names) {
+        $item = Get-Item "Env:$name" -ErrorAction SilentlyContinue
+        $previous[$name] = @{
+            Exists = $null -ne $item
+            Value = if ($item) { $item.Value } else { $null }
+        }
+    }
+
+    try {
+        _cpm_unset_provider_env
+        foreach ($name in $Values.Keys) {
+            if ($null -ne $Values[$name] -and $Values[$name] -ne "") {
+                Set-Item "Env:$name" $Values[$name]
+            }
+        }
+        Invoke-Expression $cmd
+    } finally {
+        foreach ($name in $names) {
+            if ($previous[$name].Exists) {
+                Set-Item "Env:$name" $previous[$name].Value
+            } else {
+                Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+function _cpm_export_model_env {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Selected,
+        [string]$ApiKey
+    )
+
+    $env:COPILOT_PROVIDER_BASE_URL = $Selected.BaseUrl
+    $env:COPILOT_PROVIDER_TYPE = $Selected.ProviderType
+    $env:COPILOT_MODEL = $Selected.Model
+
+    if ($ApiKey) {
+        $env:COPILOT_PROVIDER_API_KEY = $ApiKey
+    } else {
+        Remove-Item Env:COPILOT_PROVIDER_API_KEY -ErrorAction SilentlyContinue
+    }
+
+    if ($Selected.MaxPrompt -gt 0) {
+        $env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS = $Selected.MaxPrompt.ToString()
+    } else {
+        Remove-Item Env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS -ErrorAction SilentlyContinue
+    }
+    if ($Selected.MaxOutput -gt 0) {
+        $env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = $Selected.MaxOutput.ToString()
+    } else {
+        Remove-Item Env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS -ErrorAction SilentlyContinue
+    }
+}
+
+function _cpm_model_env_values {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Selected,
+        [string]$ApiKey
+    )
+
+    $values = @{
+        COPILOT_PROVIDER_BASE_URL = $Selected.BaseUrl
+        COPILOT_PROVIDER_TYPE = $Selected.ProviderType
+        COPILOT_MODEL = $Selected.Model
+    }
+    if ($ApiKey) {
+        $values.COPILOT_PROVIDER_API_KEY = $ApiKey
+    }
+    if ($Selected.MaxPrompt -gt 0) {
+        $values.COPILOT_PROVIDER_MAX_PROMPT_TOKENS = $Selected.MaxPrompt.ToString()
+    }
+    if ($Selected.MaxOutput -gt 0) {
+        $values.COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = $Selected.MaxOutput.ToString()
+    }
+    return $values
+}
+
 # -- interactive picker ---------------------------------------------------
 
 function _cpm_pick {
+    param(
+        [switch]$Global
+    )
+
     $config = Get-Content $script:CpmConfigFile -Raw | ConvertFrom-Json
     $entries = @()
 
@@ -563,11 +688,17 @@ function _cpm_pick {
 
     # Option 1 = built-in (clear all BYOK vars)
     if ($choice -eq 1) {
-        _cpm_clear
+        if ($Global) {
+            _cpm_clear
+        }
         Write-Host ""
         Write-Host "[ok] Switched to Copilot (built-in)"
         Write-Host ""
-        _cpm_launch
+        if ($Global) {
+            _cpm_launch
+        } else {
+            _cpm_invoke_with_copilot_env
+        }
         return
     }
 
@@ -587,49 +718,35 @@ function _cpm_pick {
         return
     }
 
-    $env:COPILOT_PROVIDER_BASE_URL = $selected.BaseUrl
-    $env:COPILOT_PROVIDER_TYPE = $selected.ProviderType
-    $env:COPILOT_MODEL = $selected.Model
-
     # Resolve API key
+    $resolvedKey = ""
     if ($selected.ApiKeyEnv -and $selected.ApiKeyEnv -ne "") {
         $resolvedKey = [System.Environment]::GetEnvironmentVariable($selected.ApiKeyEnv)
-        if ($resolvedKey) {
-            $env:COPILOT_PROVIDER_API_KEY = $resolvedKey
-        } else {
+        if (-not $resolvedKey) {
             Write-Host ""
             Write-Host "[!] `$$($selected.ApiKeyEnv) is not set."
             $keyInput = Read-Host "  Paste your API key now (or press Enter to skip)"
             if ($keyInput) {
                 [System.Environment]::SetEnvironmentVariable($selected.ApiKeyEnv, $keyInput, "Process")
-                $env:COPILOT_PROVIDER_API_KEY = $keyInput
+                $resolvedKey = $keyInput
                 _cpm_persist_key_ps $selected.ApiKeyEnv $keyInput
                 Write-Host "  [ok] Key set and saved to PowerShell profile."
             } else {
                 Write-Host "  Skipped -- set `$$($selected.ApiKeyEnv) before using Copilot."
-                Remove-Item Env:COPILOT_PROVIDER_API_KEY -ErrorAction SilentlyContinue
             }
         }
-    } else {
-        Remove-Item Env:COPILOT_PROVIDER_API_KEY -ErrorAction SilentlyContinue
-    }
-
-    # Token limits
-    if ($selected.MaxPrompt -gt 0) {
-        $env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS = $selected.MaxPrompt.ToString()
-    } else {
-        Remove-Item Env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS -ErrorAction SilentlyContinue
-    }
-    if ($selected.MaxOutput -gt 0) {
-        $env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = $selected.MaxOutput.ToString()
-    } else {
-        Remove-Item Env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS -ErrorAction SilentlyContinue
     }
 
     Write-Host ""
     Write-Host "[ok] Switched to $($selected.Label)"
     Write-Host ""
-    _cpm_launch
+    if ($Global) {
+        _cpm_export_model_env $selected $resolvedKey
+        _cpm_launch
+    } else {
+        $envValues = _cpm_model_env_values $selected $resolvedKey
+        _cpm_invoke_with_copilot_env $envValues
+    }
 }
 
 # -- key management -------------------------------------------------------

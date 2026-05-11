@@ -19,6 +19,14 @@ cpm() {
     return 1
   fi
 
+  local global_env=0
+  case "${1:-}" in
+    --global|-g)
+      global_env=1
+      shift
+      ;;
+  esac
+
   local sub="${1:-}"
 
   case "$sub" in
@@ -36,7 +44,7 @@ cpm() {
     help)    _cpm_help ;;
     --help)  _cpm_help ;;
     -h)      _cpm_help ;;
-    "")      _cpm_pick ;;
+    "")      _cpm_pick "$global_env" ;;
     *)
       echo "cpm: unknown command '$sub'" >&2
       _cpm_help
@@ -80,13 +88,17 @@ _cpm_edit() {
 }
 
 _cpm_clear() {
+  _cpm_unset_provider_env
+  echo "Cleared all Copilot provider env vars."
+}
+
+_cpm_unset_provider_env() {
   unset COPILOT_PROVIDER_BASE_URL
   unset COPILOT_PROVIDER_TYPE
   unset COPILOT_PROVIDER_API_KEY
   unset COPILOT_MODEL
   unset COPILOT_PROVIDER_MAX_PROMPT_TOKENS
   unset COPILOT_PROVIDER_MAX_OUTPUT_TOKENS
-  echo "Cleared all Copilot provider env vars."
 }
 
 # ── config get/set ──────────────────────────────────────────────────────
@@ -144,6 +156,55 @@ _cpm_launch() {
   cmd=$(jq -r '.launch // "copilot"' "$CPM_CONFIG_FILE")
   if [ -n "$cmd" ]; then
     eval "$cmd"
+  fi
+}
+
+_cpm_launch_builtin() {
+  local cmd
+  cmd=$(jq -r '.launch // "copilot"' "$CPM_CONFIG_FILE")
+  if [ -n "$cmd" ]; then
+    (
+      _cpm_unset_provider_env
+      eval "$cmd"
+    )
+  fi
+}
+
+_cpm_export_model_env() {
+  local base_url="$1" provider_type="$2" model="$3" api_key="$4" max_prompt="$5" max_output="$6"
+
+  export COPILOT_PROVIDER_BASE_URL="$base_url"
+  export COPILOT_PROVIDER_TYPE="$provider_type"
+  export COPILOT_MODEL="$model"
+
+  if [ -n "$api_key" ]; then
+    export COPILOT_PROVIDER_API_KEY="$api_key"
+  else
+    unset COPILOT_PROVIDER_API_KEY
+  fi
+
+  if [ "$max_prompt" -gt 0 ] 2>/dev/null; then
+    export COPILOT_PROVIDER_MAX_PROMPT_TOKENS="$max_prompt"
+  else
+    unset COPILOT_PROVIDER_MAX_PROMPT_TOKENS
+  fi
+  if [ "$max_output" -gt 0 ] 2>/dev/null; then
+    export COPILOT_PROVIDER_MAX_OUTPUT_TOKENS="$max_output"
+  else
+    unset COPILOT_PROVIDER_MAX_OUTPUT_TOKENS
+  fi
+}
+
+_cpm_launch_with_model_env() {
+  local base_url="$1" provider_type="$2" model="$3" api_key="$4" max_prompt="$5" max_output="$6"
+  local cmd
+  cmd=$(jq -r '.launch // "copilot"' "$CPM_CONFIG_FILE")
+  if [ -n "$cmd" ]; then
+    (
+      _cpm_unset_provider_env
+      _cpm_export_model_env "$base_url" "$provider_type" "$model" "$api_key" "$max_prompt" "$max_output"
+      eval "$cmd"
+    )
   fi
 }
 
@@ -596,7 +657,11 @@ _cpm_update_model() {
 
 _cpm_help() {
   cat <<'EOF'
-Usage: cpm [command]
+Usage: cpm [--global|-g] [command]
+
+Options:
+  --global  Keep selected Copilot provider env vars in the current shell
+  -g        Alias for --global
 
 Commands:
   (none)    Interactive model picker
@@ -758,6 +823,8 @@ _cpm_remove_key() {
 # ── interactive picker ──────────────────────────────────────────────────
 
 _cpm_pick() {
+  local global_env="${1:-0}"
+
   # Get a flat JSON array of all model entries
   local all_json
   all_json=$(jq -c '
@@ -815,11 +882,17 @@ _cpm_pick() {
 
   # Option 1 = built-in (clear all BYOK vars)
   if [ "$choice" -eq 1 ]; then
-    _cpm_clear
+    if [ "$global_env" -eq 1 ]; then
+      _cpm_clear
+    fi
     echo ""
     echo "✓ Switched to Copilot (built-in)"
     echo ""
-    _cpm_launch
+    if [ "$global_env" -eq 1 ]; then
+      _cpm_launch
+    else
+      _cpm_launch_builtin
+    fi
     return 0
   fi
 
@@ -846,46 +919,24 @@ _cpm_pick() {
       ;;
   esac
 
-  # Set env vars
-  export COPILOT_PROVIDER_BASE_URL="$base_url"
-  export COPILOT_PROVIDER_TYPE="$provider_type"
-  export COPILOT_MODEL="$model"
-
   # Resolve API key from the env var name (portable indirect expansion)
+  local resolved_key=""
   if [ -n "$api_key_env" ] && [ "$api_key_env" != "null" ]; then
-    local resolved_key
     eval "resolved_key=\"\${${api_key_env}:-}\""
-    if [ -n "$resolved_key" ]; then
-      export COPILOT_PROVIDER_API_KEY="$resolved_key"
-    else
+    if [ -z "$resolved_key" ]; then
       echo ""
       echo "⚠ \$$api_key_env is not set."
       printf "  Paste your API key now (or press Enter to skip): "
       read -r _key_input
       if [ -n "$_key_input" ]; then
         export "$api_key_env=$_key_input"
-        export COPILOT_PROVIDER_API_KEY="$_key_input"
+        resolved_key="$_key_input"
         _cpm_persist_key "$api_key_env" "$_key_input"
         echo "  ✓ Key set and saved to shell profile."
       else
         echo "  Skipped — set \$$api_key_env before using Copilot." >&2
-        unset COPILOT_PROVIDER_API_KEY
       fi
     fi
-  else
-    unset COPILOT_PROVIDER_API_KEY
-  fi
-
-  # Token limits (only set if > 0)
-  if [ "$max_prompt" -gt 0 ] 2>/dev/null; then
-    export COPILOT_PROVIDER_MAX_PROMPT_TOKENS="$max_prompt"
-  else
-    unset COPILOT_PROVIDER_MAX_PROMPT_TOKENS
-  fi
-  if [ "$max_output" -gt 0 ] 2>/dev/null; then
-    export COPILOT_PROVIDER_MAX_OUTPUT_TOKENS="$max_output"
-  else
-    unset COPILOT_PROVIDER_MAX_OUTPUT_TOKENS
   fi
 
   local label
@@ -893,7 +944,12 @@ _cpm_pick() {
   echo ""
   echo "✓ Switched to $label"
   echo ""
-  _cpm_launch
+  if [ "$global_env" -eq 1 ]; then
+    _cpm_export_model_env "$base_url" "$provider_type" "$model" "$resolved_key" "$max_prompt" "$max_output"
+    _cpm_launch
+  else
+    _cpm_launch_with_model_env "$base_url" "$provider_type" "$model" "$resolved_key" "$max_prompt" "$max_output"
+  fi
 }
 
 # ── VS Code import ──────────────────────────────────────────────────────

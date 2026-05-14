@@ -937,20 +937,22 @@ _cpm_import() {
   local imported
   imported=$(jq '
     [.[] | select(.vendor != "copilot") |
+     (if (.models | type) == "array" then .models else [] end) as $models |
+     select(($models | length) > 0) |
      {
        name: .name,
-       base_url: (.models[0].url // ""),
+        base_url: ($models[0].url // ""),
        provider_type: (
          if .vendor == "anthropic" then "anthropic"
          elif .vendor == "azure" then "azure"
          else "openai"
          end
        ),
-       api_key_env: ((.name | gsub("[^a-zA-Z0-9]"; "_") | ascii_upcase) + "_API_KEY"),
-       models: [.models[] | {
-         id: .id,
-         max_prompt_tokens: (.maxInputTokens // 0),
-         max_output_tokens: (.maxOutputTokens // 0)
+        api_key_env: ((.name | gsub("[^a-zA-Z0-9]"; "_") | ascii_upcase) + "_API_KEY"),
+        models: [$models[] | {
+          id: .id,
+          max_prompt_tokens: (.maxInputTokens // 0),
+          max_output_tokens: (.maxOutputTokens // 0)
        }]
      }
     ]

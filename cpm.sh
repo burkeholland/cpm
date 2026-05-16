@@ -908,7 +908,7 @@ _cpm_pick() {
         export COPILOT_PROVIDER_API_KEY="$resolved_key"
       else
         echo ""
-        echo "⚠ Provider API key env var is not set."
+        echo "⚠ \$$api_key_env is not set."
         printf "  Paste your API key now (or press Enter to skip): "
         read -r _key_input
         if [ -n "$_key_input" ]; then
@@ -917,7 +917,7 @@ _cpm_pick() {
           _cpm_persist_key "$api_key_env" "$_key_input"
           echo "  ✓ Key set and saved to shell profile."
         else
-          echo "  Skipped — set the provider API key env var before using Copilot." >&2
+          echo "  Skipped — set \$$api_key_env before using Copilot." >&2
           unset COPILOT_PROVIDER_API_KEY
         fi
       fi

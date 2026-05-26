@@ -89,6 +89,17 @@ _cpm_clear() {
   echo "Cleared all Copilot provider env vars."
 }
 
+_cpm_is_valid_env_name() {
+  case "$1" in
+    ''|[0-9]*|*[!A-Z0-9_]*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
 # ── config get/set ──────────────────────────────────────────────────────
 
 _cpm_config() {
@@ -255,6 +266,11 @@ _cpm_add() {
 
     printf "  API key env var name (e.g. OPENROUTER_API_KEY, blank for none): "
     read -r pkey
+
+    if [ -n "$pkey" ] && ! _cpm_is_valid_env_name "$pkey"; then
+      echo "Invalid API key env var name. Use uppercase letters, numbers, and underscores, and don't start with a number." >&2
+      return 1
+    fi
 
     # Append new provider with empty models array
     jq --arg n "$pname" --arg u "$purl" --arg t "$ptype" --arg k "$pkey" \
@@ -500,6 +516,11 @@ _cpm_update_provider() {
   read -r new_key
   new_key="${new_key:-$cur_key}"
 
+  if [ -n "$new_key" ] && ! _cpm_is_valid_env_name "$new_key"; then
+    echo "Invalid API key env var name. Use uppercase letters, numbers, and underscores, and don't start with a number." >&2
+    return 1
+  fi
+
   jq --argjson i "$pidx" --arg n "$new_name" --arg u "$new_url" --arg t "$new_type" --arg k "$new_key" \
     '.providers[$i].name = $n | .providers[$i].base_url = $u | .providers[$i].provider_type = $t | .providers[$i].api_key_env = $k' \
     "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
@@ -666,6 +687,10 @@ _cpm_keys() {
     if [ -z "$api_key_env" ] || [ "$api_key_env" = "null" ]; then
       echo "  $name: no auth required"
     else
+      if ! _cpm_is_valid_env_name "$api_key_env"; then
+        echo "  $name: ✗ API key env var name is invalid"
+        continue
+      fi
       eval "resolved=\"\${${api_key_env}:-}\""
       if [ -n "$resolved" ]; then
         _last4=$(printf '%s' "$resolved" | tail -c 4)
@@ -681,6 +706,10 @@ _cpm_keys() {
   missing_envs=$(jq -r '.providers[] | select(.api_key_env != null and .api_key_env != "") | .api_key_env' "$CPM_CONFIG_FILE")
 
   for env_name in $missing_envs; do
+    if ! _cpm_is_valid_env_name "$env_name"; then
+      any_missing=1
+      continue
+    fi
     eval "_val=\"\${${env_name}:-}\""
     if [ -z "$_val" ]; then
       any_missing=1
@@ -695,6 +724,10 @@ _cpm_keys() {
     echo ""
 
     for env_name in $missing_envs; do
+      if ! _cpm_is_valid_env_name "$env_name"; then
+        echo "  ⚠ Skipping invalid API key env var name in config for one provider."
+        continue
+      fi
       eval "_val=\"\${${env_name}:-}\""
       if [ -z "$_val" ]; then
         printf "Enter value for \$%s (or press Enter to skip): " "$env_name"
@@ -716,6 +749,11 @@ _cpm_persist_key() {
   local env_name="$1" key_value="$2"
   local rc_file=""
   local current_shell
+
+  if ! _cpm_is_valid_env_name "$env_name"; then
+    return 1
+  fi
+
   current_shell=$(basename "${SHELL:-bash}")
 
   case "$current_shell" in
@@ -738,6 +776,11 @@ _cpm_remove_key() {
   local env_name="$1"
   local rc_file=""
   local current_shell
+
+  if ! _cpm_is_valid_env_name "$env_name"; then
+    return 1
+  fi
+
   current_shell=$(basename "${SHELL:-bash}")
 
   case "$current_shell" in
@@ -853,23 +896,30 @@ _cpm_pick() {
 
   # Resolve API key from the env var name (portable indirect expansion)
   if [ -n "$api_key_env" ] && [ "$api_key_env" != "null" ]; then
-    local resolved_key
-    eval "resolved_key=\"\${${api_key_env}:-}\""
-    if [ -n "$resolved_key" ]; then
-      export COPILOT_PROVIDER_API_KEY="$resolved_key"
-    else
+    if ! _cpm_is_valid_env_name "$api_key_env"; then
       echo ""
-      echo "⚠ \$$api_key_env is not set."
-      printf "  Paste your API key now (or press Enter to skip): "
-      read -r _key_input
-      if [ -n "$_key_input" ]; then
-        export "$api_key_env=$_key_input"
-        export COPILOT_PROVIDER_API_KEY="$_key_input"
-        _cpm_persist_key "$api_key_env" "$_key_input"
-        echo "  ✓ Key set and saved to shell profile."
+      echo "⚠ Configured API key env var name is invalid." >&2
+      echo "  Run 'cpm update' to fix this provider's configuration." >&2
+      unset COPILOT_PROVIDER_API_KEY
+    else
+      local resolved_key
+      eval "resolved_key=\"\${${api_key_env}:-}\""
+      if [ -n "$resolved_key" ]; then
+        export COPILOT_PROVIDER_API_KEY="$resolved_key"
       else
-        echo "  Skipped — set \$$api_key_env before using Copilot." >&2
-        unset COPILOT_PROVIDER_API_KEY
+        echo ""
+        echo "⚠ \$$api_key_env is not set."
+        printf "  Paste your API key now (or press Enter to skip): "
+        read -r _key_input
+        if [ -n "$_key_input" ]; then
+          export "$api_key_env=$_key_input"
+          export COPILOT_PROVIDER_API_KEY="$_key_input"
+          _cpm_persist_key "$api_key_env" "$_key_input"
+          echo "  ✓ Key set and saved to shell profile."
+        else
+          echo "  Skipped — set \$$api_key_env before using Copilot." >&2
+          unset COPILOT_PROVIDER_API_KEY
+        fi
       fi
     fi
   else

@@ -1,0 +1,3 @@
+# Force LF line endings so scripts run on Linux/macOS regardless of local core.autocrlf
+*.sh text eol=lf
+.gitattributes text eol=lf

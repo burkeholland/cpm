@@ -20,13 +20,13 @@ Enter number (1-3): 1
 **Bash / Zsh (macOS, Linux)**
 
 ```bash
-git clone https://github.com/your-user/cpm.git && cd cpm && bash install.sh
+git clone https://github.com/burkeholland/cpm.git && cd cpm && bash install.sh
 ```
 
 **PowerShell (Windows, macOS, Linux)**
 
 ```powershell
-git clone https://github.com/your-user/cpm.git; cd cpm; .\install.ps1
+git clone https://github.com/burkeholland/cpm.git; cd cpm; .\install.ps1
 ```
 
 The installer will:

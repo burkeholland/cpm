@@ -628,14 +628,17 @@ _cpm_discover() {
     return 1
   fi
 
-  # Build a flat list of { provider_group, model_id, name, context }
+  # Build a flat list of { group, id, name, context, max_output, pricing }
   local models_json
   models_json=$(printf '%s' "$raw_json" | jq '[.data[] | {
     group: (.id | split("/")[0]),
     id: .id,
     name: (.id | split("/")[1:] | join("/")),
     context: (.top_provider.context_length // .context_length // 0),
-    max_output: (.top_provider.max_completion_tokens // 0)
+    max_output: (.top_provider.max_completion_tokens // 0),
+    is_free: (.id | test(":free$")),
+    prompt_cost: (.pricing.prompt // "") ,
+    completion_cost: (.pricing.completion // "")
   }]')
 
   local groups
@@ -696,10 +699,13 @@ _cpm_discover() {
 
   local mi=0
   while [ "$mi" -lt "$group_model_count" ]; do
-    local mid mname mctx
+    local mid mname mctx mfree mprompt mcompletion
     mid=$(printf '%s' "$group_models" | jq -r ".[$mi].id")
     mname=$(printf '%s' "$group_models" | jq -r ".[$mi].name")
     mctx=$(printf '%s' "$group_models" | jq -r ".[$mi].context")
+    mfree=$(printf '%s' "$group_models" | jq -r ".[$mi].is_free")
+    mprompt=$(printf '%s' "$group_models" | jq -r ".[$mi].prompt_cost")
+    mcompletion=$(printf '%s' "$group_models" | jq -r ".[$mi].completion_cost")
     local ctx_fmt=""
     if [ "$mctx" -gt 0 ] 2>/dev/null; then
       if [ "$mctx" -ge 1000000 ]; then
@@ -708,7 +714,16 @@ _cpm_discover() {
         ctx_fmt="$((mctx / 1000))k ctx"
       fi
     fi
-    printf "  %3d) %-45s %s\n" "$((mi + 1))" "$mid" "$ctx_fmt"
+    local price_tag=""
+    if [ "$mfree" = "true" ]; then
+      price_tag=" FREE"
+    elif [ -n "$mprompt" ] && [ "$mprompt" != "null" ] && [ -n "$mcompletion" ] && [ "$mcompletion" != "null" ]; then
+      local p_prompt p_completion
+      p_prompt=$(printf '%s' "$mprompt" | awk '{printf "%.1f", $1 * 1000000}')
+      p_completion=$(printf '%s' "$mcompletion" | awk '{printf "%.1f", $1 * 1000000}')
+      price_tag=" \$${p_prompt}/\$${p_completion}/M"
+    fi
+    printf "  %3d) %-42s %s%s\n" "$((mi + 1))" "$mid" "$ctx_fmt" "$price_tag"
     mi=$((mi + 1))
   done
 

@@ -29,6 +29,7 @@ cpm() {
     update)  _cpm_update ;;
     edit)    _cpm_edit ;;
     import)  _cpm_import ;;
+    discover) _cpm_discover ;;
     clear)   _cpm_clear ;;
     keys)    _cpm_keys ;;
     config)  shift; _cpm_config "$@" ;;
@@ -594,6 +595,211 @@ _cpm_update_model() {
   echo "✓ Updated $cur_pn > $new_id"
 }
 
+# ── discover models from OpenRouter API ────────────────────────────────
+
+_CPM_OR_API="https://openrouter.ai/api/v1/models?supported_parameters=tools"
+_CPM_OR_BASE_URL="https://openrouter.ai/api/v1"
+_CPM_OR_PROVIDER_TYPE="openai"
+
+_cpm_discover() {
+  # guard: curl
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "cpm discover: curl is required." >&2
+    return 1
+  fi
+
+  echo ""
+  echo "  Fetching models from OpenRouter..."
+  echo ""
+
+  local raw_json
+  raw_json=$(curl -sSL --connect-timeout 10 "$_CPM_OR_API" 2>/dev/null)
+
+  if [ -z "$raw_json" ]; then
+    echo "  Failed to fetch models. Check your internet connection." >&2
+    return 1
+  fi
+
+  local total_count
+  total_count=$(printf '%s' "$raw_json" | jq '.data | length' 2>/dev/null)
+
+  if [ -z "$total_count" ] || [ "$total_count" -eq 0 ]; then
+    echo "  No models returned from OpenRouter API." >&2
+    return 1
+  fi
+
+  # Build a flat list of { provider_group, model_id, name, context }
+  local models_json
+  models_json=$(printf '%s' "$raw_json" | jq '[.data[] | {
+    group: (.id | split("/")[0]),
+    id: .id,
+    name: (.id | split("/")[1:] | join("/")),
+    context: (.top_provider.context_length // .context_length // 0),
+    max_output: (.top_provider.max_completion_tokens // 0)
+  }]')
+
+  local groups
+  groups=$(printf '%s' "$models_json" | jq -r '[group_by(.group)[] | { group: .[0].group, count: length }] | sort_by(.group)')
+
+  local group_count
+  group_count=$(printf '%s' "$groups" | jq 'length')
+
+  echo "  Found $total_count models with tool-calling support"
+  echo "  across $group_count provider groups."
+  echo ""
+
+  # Step 1: pick a provider group
+  echo "  Provider groups:"
+  echo ""
+
+  local gi=0
+  while [ "$gi" -lt "$group_count" ]; do
+    local gname gcount
+    gname=$(printf '%s' "$groups" | jq -r ".[$gi].group")
+    gcount=$(printf '%s' "$groups" | jq -r ".[$gi].count")
+    printf "  %3d) %-20s (%d models)\n" "$((gi + 1))" "$gname" "$gcount"
+    gi=$((gi + 1))
+  done
+
+  if [ "$group_count" -eq 0 ]; then
+    echo "  No provider groups found." >&2
+    return 1
+  fi
+
+  echo ""
+  local gchoice
+  while true; do
+    printf "  Pick a group (1-%d): " "$group_count"
+    read -r gchoice
+    case "$gchoice" in
+      ''|*[!0-9]*) echo "  Invalid choice." >&2; continue ;;
+    esac
+    if [ "$gchoice" -ge 1 ] && [ "$gchoice" -le "$group_count" ]; then
+      break
+    fi
+    echo "  Invalid choice." >&2
+  done
+
+  local selected_group
+  selected_group=$(printf '%s' "$groups" | jq -r ".[$((gchoice - 1))].group")
+  echo ""
+
+  # Step 2: pick a model from the selected group
+  local group_models
+  group_models=$(printf '%s' "$models_json" | jq -c --arg g "$selected_group" '[.[] | select(.group == $g)]')
+
+  local group_model_count
+  group_model_count=$(printf '%s' "$group_models" | jq 'length')
+
+  echo "  Models in '$selected_group':"
+  echo ""
+
+  local mi=0
+  while [ "$mi" -lt "$group_model_count" ]; do
+    local mid mname mctx
+    mid=$(printf '%s' "$group_models" | jq -r ".[$mi].id")
+    mname=$(printf '%s' "$group_models" | jq -r ".[$mi].name")
+    mctx=$(printf '%s' "$group_models" | jq -r ".[$mi].context")
+    local ctx_fmt=""
+    if [ "$mctx" -gt 0 ] 2>/dev/null; then
+      if [ "$mctx" -ge 1000000 ]; then
+        ctx_fmt="$((mctx / 1000000)).$(((mctx % 1000000) / 100000))M ctx"
+      else
+        ctx_fmt="$((mctx / 1000))k ctx"
+      fi
+    fi
+    printf "  %3d) %-45s %s\n" "$((mi + 1))" "$mid" "$ctx_fmt"
+    mi=$((mi + 1))
+  done
+
+  echo ""
+  local mchoice
+  while true; do
+    printf "  Pick a model (1-%d): " "$group_model_count"
+    read -r mchoice
+    case "$mchoice" in
+      ''|*[!0-9]*) echo "  Invalid choice." >&2; continue ;;
+    esac
+    if [ "$mchoice" -ge 1 ] && [ "$mchoice" -le "$group_model_count" ]; then
+      break
+    fi
+    echo "  Invalid choice." >&2
+  done
+
+  local selected_idx=$((mchoice - 1))
+  local selected_id selected_ctx selected_output
+  selected_id=$(printf '%s' "$group_models" | jq -r ".[$selected_idx].id")
+  selected_ctx=$(printf '%s' "$group_models" | jq -r ".[$selected_idx].context")
+  selected_output=$(printf '%s' "$group_models" | jq -r ".[$selected_idx].max_output")
+
+  # Set env vars
+  export COPILOT_PROVIDER_BASE_URL="$_CPM_OR_BASE_URL"
+  export COPILOT_PROVIDER_TYPE="$_CPM_OR_PROVIDER_TYPE"
+  export COPILOT_MODEL="$selected_id"
+
+  # Resolve API key
+  local or_key
+  or_key="${OPENROUTER_API_KEY:-}"
+  if [ -n "$or_key" ]; then
+    export COPILOT_PROVIDER_API_KEY="$or_key"
+  fi
+
+  # Token limits
+  if [ "$selected_ctx" -gt 0 ] 2>/dev/null; then
+    export COPILOT_PROVIDER_MAX_PROMPT_TOKENS="$selected_ctx"
+  else
+    unset COPILOT_PROVIDER_MAX_PROMPT_TOKENS
+  fi
+  if [ "$selected_output" -gt 0 ] 2>/dev/null; then
+    export COPILOT_PROVIDER_MAX_OUTPUT_TOKENS="$selected_output"
+  else
+    unset COPILOT_PROVIDER_MAX_OUTPUT_TOKENS
+  fi
+
+  echo ""
+  echo "  ✓ Switched to OpenRouter > $selected_id"
+  echo ""
+
+  # Step 3: offer to save to config
+  local save_choice
+  printf "  Save to cpm config for quick access? [y/N]: "
+  read -r save_choice
+  if [ "$save_choice" = "y" ] || [ "$save_choice" = "Y" ]; then
+    # Check if OpenRouter provider exists in config
+    local or_exists
+    or_exists=$(jq '[.providers[] | select(.name == "OpenRouter")] | length' "$CPM_CONFIG_FILE")
+
+    if [ "$or_exists" -gt 0 ]; then
+      # Check if model already exists
+      local model_exists
+      model_exists=$(jq --arg id "$selected_id" '[.providers[] | select(.name == "OpenRouter").models[] | select(.id == $id)] | length' "$CPM_CONFIG_FILE")
+      if [ "$model_exists" -eq 0 ]; then
+        jq --arg id "$selected_id" --argjson ctx "$selected_ctx" --argjson out "$selected_output" \
+          '(.providers[] | select(.name == "OpenRouter")).models += [{id: $id, max_prompt_tokens: $ctx, max_output_tokens: $out}]' \
+          "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+        echo "  ✓ Saved '$selected_id' to OpenRouter in config."
+      else
+        echo "  Model already exists in config."
+      fi
+    else
+      # Create OpenRouter provider
+      jq --arg id "$selected_id" --argjson ctx "$selected_ctx" --argjson out "$selected_output" \
+        '.providers += [{
+          name: "OpenRouter",
+          base_url: "https://openrouter.ai/api/v1",
+          provider_type: "openai",
+          api_key_env: "OPENROUTER_API_KEY",
+          models: [{id: $id, max_prompt_tokens: $ctx, max_output_tokens: $out}]
+        }]' \
+        "$CPM_CONFIG_FILE" > "$CPM_CONFIG_FILE.tmp" && mv "$CPM_CONFIG_FILE.tmp" "$CPM_CONFIG_FILE"
+      echo "  ✓ Created OpenRouter provider and saved '$selected_id'."
+    fi
+  fi
+
+  echo ""
+  _cpm_launch
+}
+
 _cpm_help() {
   cat <<'EOF'
 Usage: cpm [command]
@@ -609,6 +815,7 @@ Commands:
   config    Get/set config values (e.g. cpm config launch yolo)
   edit      Open models.json in $EDITOR
   import    Import models from VS Code chatLanguageModels.json
+  discover  Discover & select models from OpenRouter API
   clear     Unset all Copilot provider env vars
   uninstall Remove cpm config, script, and profile entries
   help      Show this help

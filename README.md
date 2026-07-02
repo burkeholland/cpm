@@ -66,6 +66,7 @@ sudo dnf install jq
 | `cpm keys` | Show API key status and set missing keys |
 | `cpm edit` | Open `models.json` in `$EDITOR` |
 | `cpm import` | Import models from VS Code `chatLanguageModels.json` |
+| `cpm discover` | Discover & select models live from OpenRouter API |
 | `cpm clear` | Unset all Copilot provider env vars |
 | `cpm help` | Show help |
 

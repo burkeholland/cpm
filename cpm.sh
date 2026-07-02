@@ -647,6 +647,8 @@ _cpm_discover() {
   local group_count
   group_count=$(printf '%s' "$groups" | jq 'length')
 
+  local total_options=$((group_count + 1))
+
   echo "  Found $total_count models with tool-calling support"
   echo "  across $group_count provider groups."
   echo ""
@@ -664,6 +666,9 @@ _cpm_discover() {
     gi=$((gi + 1))
   done
 
+  # Special option: OpenRouter Free Router
+  printf "  %3d) %-20s\n" "$total_options" "openrouter/free (auto)"
+
   if [ "$group_count" -eq 0 ]; then
     echo "  No provider groups found." >&2
     return 1
@@ -672,16 +677,25 @@ _cpm_discover() {
   echo ""
   local gchoice
   while true; do
-    printf "  Pick a group (1-%d): " "$group_count"
+    printf "  Pick a group (1-%d): " "$total_options"
     read -r gchoice
     case "$gchoice" in
       ''|*[!0-9]*) echo "  Invalid choice." >&2; continue ;;
     esac
-    if [ "$gchoice" -ge 1 ] && [ "$gchoice" -le "$group_count" ]; then
+    if [ "$gchoice" -ge 1 ] && [ "$gchoice" -le "$total_options" ]; then
       break
     fi
     echo "  Invalid choice." >&2
   done
+
+  # Handle OpenRouter Free Router
+  if [ "$gchoice" -eq "$total_options" ]; then
+    echo ""
+    echo "  Using OpenRouter Free Router — auto-selects best free model."
+    echo ""
+    _cpm_discover_activate "openrouter/free" 0 0
+    return $?
+  fi
 
   local selected_group
   selected_group=$(printf '%s' "$groups" | jq -r ".[$((gchoice - 1))].group")
@@ -746,6 +760,14 @@ _cpm_discover() {
   selected_id=$(printf '%s' "$group_models" | jq -r ".[$selected_idx].id")
   selected_ctx=$(printf '%s' "$group_models" | jq -r ".[$selected_idx].context")
   selected_output=$(printf '%s' "$group_models" | jq -r ".[$selected_idx].max_output")
+
+  _cpm_discover_activate "$selected_id" "$selected_ctx" "$selected_output"
+}
+
+# ── activate selected model ────────────────────────────────────────────
+
+_cpm_discover_activate() {
+  local selected_id="$1" selected_ctx="$2" selected_output="$3"
 
   # Set env vars
   export COPILOT_PROVIDER_BASE_URL="$_CPM_OR_BASE_URL"

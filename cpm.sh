@@ -737,9 +737,24 @@ _cpm_discover() {
   export COPILOT_PROVIDER_TYPE="$_CPM_OR_PROVIDER_TYPE"
   export COPILOT_MODEL="$selected_id"
 
-  # Resolve API key
+  # Resolve API key — warn / prompt if missing
   local or_key
   or_key="${OPENROUTER_API_KEY:-}"
+  if [ -z "$or_key" ]; then
+    echo "  OpenRouter API key (\$OPENROUTER_API_KEY) is not set."
+    echo "  It must be set before using OpenRouter models."
+    echo ""
+    printf "  Paste your OpenRouter API key (sk-or-...): "
+    read -r or_key
+    if [ -n "$or_key" ]; then
+      export OPENROUTER_API_KEY="$or_key"
+      echo "  ✓ \$OPENROUTER_API_KEY set for this session."
+      echo "  Tip: add 'export OPENROUTER_API_KEY=...' to ~/.bashrc for persistence."
+    else
+      echo "  No key provided. Authentication will likely fail." >&2
+    fi
+    echo ""
+  fi
   if [ -n "$or_key" ]; then
     export COPILOT_PROVIDER_API_KEY="$or_key"
   fi

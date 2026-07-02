@@ -757,6 +757,10 @@ _cpm_discover() {
   fi
   if [ -n "$or_key" ]; then
     export COPILOT_PROVIDER_API_KEY="$or_key"
+    export COPILOT_PROVIDER_BEARER_TOKEN="$or_key"
+    echo "  ✓ API key resolved (${or_key:0:11}...)"
+  else
+    echo "  ⚠ No API key set — copilot will fail with 403." >&2
   fi
 
   # Token limits
